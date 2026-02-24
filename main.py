@@ -15,7 +15,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-ALLOWED_USERS = {1557254587, 987654321}  # ⚠️ REEMPLAZA CON LOS IDs NUMÉRICOS REALES
+ALLOWED_USERS = {123456789, 987654321}  # ⚠️ REEMPLAZA CON LOS IDs NUMÉRICOS REALES
 DB_PATH = Path("/app/data/rutinas.db")
 
 def safe(text: str) -> str:
@@ -136,41 +136,81 @@ CATALOGO = [
 VALID_IDS = {ex["ejercicio_id"] for ex in CATALOGO}
 CATALOGO_POR_ID = {ex["ejercicio_id"]: ex for ex in CATALOGO}
 
-SYSTEM_PROMPT = f"""
-Eres un planificador de entrenamiento para una persona PRINCIPIANTE con acceso a gimnasio completo.
-NO hablas con el usuario. SOLO generas JSON válido.
+def construir_system_prompt(perfil: dict) -> str:
+    nivel = perfil.get("nivel", "principiante")
+    objetivo = perfil.get("objetivo", "general")
+    dias = perfil.get("dias", 3)
+    limitaciones = perfil.get("limitaciones", "ninguna")
 
-REGLAS DURAS (OBLIGATORIAS):
-1) Usa EXCLUSIVAMENTE el siguiente CATALOGO. No inventes ejercicios ni IDs.
-2) Genera un plan exacto de 4 semanas con progresión suave.
-3) Semanas 1-2: ejercicios más simples (peso corporal, máquinas guiadas).
-   Semanas 3-4: introduce mancuernas y mayor variedad.
-4) Varía los ejercicios entre días para evitar repetición y mantener motivación.
-5) Cada día incluye 4-5 ejercicios con orden lógico (compuesto → aislamiento).
-6) 'reps' debe ser texto (ej. "12" o "30s").
-7) Formato de salida: JSON ESTRICTO, sin texto extra, sin markdown.
-8) Sin campo 'url' — elimínalo completamente del JSON de salida.
+    if nivel == "principiante":
+        ciencia_series = """SERIES Y REPS (Schoenfeld 2010 / ACSM):
+- S1-2: 3x12-15 reps. Técnica primero. RIR=3-4. Carga ligera.
+- S3: 3x10-12. Carga sube. RIR=2-3.
+- S4: 3x8-10. Hipertrofia real. RIR=1-2.
+- NO uses 4x6 o 5x5 (riesgo lesión sin base técnica).
+- Cardio: zona 1-2, 60-70%% FCmax, 15-25 min. Sin HIIT aún."""
+        prog_semanas = "S1-2: máquinas y peso corporal. S3-4: introduce mancuernas y libres."
+    elif nivel == "intermedio":
+        ciencia_series = """SERIES Y REPS (Periodización lineal):
+- S1: 4x10-12 (hipertrofia, RIR=2).
+- S2: 4x8-10 (hipertrofia-fuerza, RIR=2).
+- S3: 4x6-8 (fuerza, RIR=1).
+- S4: DELOAD — 3x12 al 60%% (recuperación activa).
+- Cardio: zona 2-3. Puede incluir intervalos 30s/90s."""
+        prog_semanas = "Compuestos pesados + aislamiento. Varía ejercicios entre semanas."
+    else:
+        ciencia_series = """SERIES Y REPS (Periodización ondulante):
+- Alterna por día: Fuerza (5x5 RIR=1), Hipertrofia (4x8-10 RIR=2), Resistencia (3x15 RIR=3).
+- S4: DELOAD obligatorio — 40%% menos volumen."""
+        prog_semanas = "Máxima variedad. Superseries en semana 3."
+
+    if "gluteo" in objetivo or "gluteos" in objetivo:
+        ciencia_obj = """OBJETIVO GLÚTEO (Contreras EMG studies):
+- Hip thrust/Puente: activación pico >200%% MVIC. PRIORIDAD MÁXIMA cada sesión de glúteo.
+- Activar glúteo ANTES de sentadillas (pre-fatiga = mayor reclutamiento).
+- Incluir abducción para glúteo medio (estabilidad y forma).
+- Frecuencia: 2-3x/semana. Cardio: cinta inclinada o elíptica (preserva glúteo)."""
+    elif "peso" in objetivo:
+        ciencia_obj = """OBJETIVO PÉRDIDA DE PESO (ACSM 2021):
+- Cardio LISS 25-35 min AL FINAL (preserva glucógeno para la pesa).
+- EPOC: compuestos multiarticulares generan quema post-entreno.
+- Frecuencia cardio: 3-4x/semana. No sacrificar resistencia."""
+    else:
+        ciencia_obj = """OBJETIVO TONIFICACIÓN:
+- Rango 8-15 reps con 60-75%% 1RM. Balance empuje=tirón, cuádriceps=isquios.
+- Combinar fuerza + cardio moderado. Compuestos = mayor quema calórica."""
+
+    nutricion = f"""NOTAS CON HIDRATACIÓN/NUTRICIÓN (incluir en ejercicios clave):
+- Pre-entreno: 400-600ml agua, snack carbohidratos si >3h sin comer.
+- Durante: 150-250ml cada 15-20 min. Si >60 min: electrolitos.
+- Post: proteína en 30-45 min. Carbos para reponer glucógeno.
+- Objetivo {objetivo}: {"proteína 1.6-2.2g/kg peso" if "gluteo" in objetivo or "general" in objetivo else "déficit 300-500 kcal/día, proteína intacta"}."""
+
+    return f"""Eres un coach de fitness experto. NO hablas. SOLO generas JSON válido con ciencia real.
+
+PERFIL: nivel={nivel}, objetivo={objetivo}, días/semana={dias}, limitaciones={limitaciones}
+
+{ciencia_series}
+
+{ciencia_obj}
+
+{nutricion}
+
+REGLAS:
+1) SOLO IDs del CATALOGO_JSON. No inventes.
+2) 4 semanas exactas. {prog_semanas}
+3) Orden científico por día: activación → compuesto principal → compuesto secundario → aislamiento → core/cardio.
+4) Varía ejercicios entre días y semanas. No repetir mismo grupo muscular 2 días seguidos.
+5) Notas = coaching real: técnica, tempo, respiración, hidratación. Máx 10 palabras.
+6) 'reps' siempre texto: "12", "8-10", "45s".
+7) Progresión real semana a semana (series/reps cambian según ciencia arriba).
+8) JSON ESTRICTO. Sin markdown. Sin campo 'url'.
 
 CATALOGO_JSON:
 {json.dumps(CATALOGO, ensure_ascii=False)}
 
-FORMATO DE SALIDA EXACTO:
-{{
-  "semanas": [
-    {{
-      "semana": 1,
-      "dias": [
-        {{
-          "dia": "lunes",
-          "grupo": "pierna",
-          "ejercicios": [
-            {{"ejercicio_id": "PIE_01", "ejercicio": "Sentadilla libre", "orden": 1, "series": 3, "reps": "12", "notas": "Baja lento, rodillas hacia afuera"}}
-          ]
-        }}
-      ]
-    }}
-  ]
-}}
+FORMATO:
+{{"semanas":[{{"semana":1,"dias":[{{"dia":"lunes","grupo":"gluteo","ejercicios":[{{"ejercicio_id":"GLU_01","ejercicio":"Puente de glúteo","orden":1,"series":3,"reps":"15","notas":"Aprieta glúteo 1s arriba, baja lento"}}]}}]}}]}}
 """
 
 # ==========================================
@@ -207,6 +247,14 @@ def init_db():
         user_id INTEGER, milestone_key TEXT,
         ts DATETIME DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (user_id, milestone_key)
+    )""")
+
+    # Perfil completo del usuario (onboarding)
+    cur.execute("""CREATE TABLE IF NOT EXISTS perfil_usuario (
+        user_id INTEGER PRIMARY KEY,
+        nivel TEXT DEFAULT 'principiante',
+        limitaciones TEXT DEFAULT 'ninguna',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )""")
 
     # NUEVA: historial de swaps para persistencia entre semanas
@@ -499,7 +547,7 @@ def formatear_plan_completo(user_id: int) -> str:
     cur.execute("""
         SELECT semana, dia, grupo, ejercicio, series, reps
         FROM rutinas WHERE user_id = ?
-        ORDER BY semana, MIN(id), orden
+        ORDER BY semana, id, orden
     """, (user_id,))
     # Agrupar por semana y dia
     from collections import defaultdict
@@ -554,7 +602,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("💪 Tonificar todo el cuerpo", callback_data="obj:general")]
         ])
         await update.message.reply_text(
-            "👋 <b>¡Hola!</b> No tenemos un plan activo.\n\nVamos a crear uno. ¿Cuál es tu objetivo principal?",
+            "👋 <b>¡Hola!</b> Vamos a crear tu plan personalizado.\n\n"
+            "<b>Paso 1/4</b> — ¿Cuál es tu objetivo principal?",
             reply_markup=teclado, parse_mode="HTML"
         )
         return
@@ -587,12 +636,19 @@ async def gemini_coach_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     if not await check_auth(update): return
     user_id = update.effective_user.id
     semana, dia = obtener_estado_usuario(user_id)
+    conn_p = sqlite3.connect(DB_PATH)
+    cur_p = conn_p.cursor()
+    cur_p.execute("SELECT nivel, limitaciones FROM perfil_usuario WHERE user_id = ?", (user_id,))
+    row_p = cur_p.fetchone()
+    conn_p.close()
+    nivel_usr = row_p[0] if row_p else "principiante"
+    lim_usr = row_p[1] if row_p else "ninguna"
     system_ctx = (
-        f"Eres un entrenador personal motivador y cercano. "
-        f"El usuario está en Semana {semana}, día {dia}. "
-        f"Responde en máximo 3 oraciones. "
-        f"Si menciona dolor, dile que pare y consulte a un médico. "
-        f"No inventes rutinas ni ejercicios, dile que use /start."
+        f"Eres un coach de fitness experto, motivador y cercano. "
+        f"Usuario: nivel={nivel_usr}, limitaciones={lim_usr}, Semana {semana} día {dia}. "
+        f"Responde en máximo 3 oraciones con base científica cuando aplique. "
+        f"Si menciona dolor, dile que pare y consulte médico. "
+        f"No inventes rutinas, dile que use /start."
     )
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action='typing')
     try:
@@ -659,11 +715,67 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """, (user_id, objetivo))
         conn.commit()
         conn.close()
+        # Paso 2: nivel
+        teclado = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🌱 Principiante (< 6 meses)", callback_data="niv:principiante")],
+            [InlineKeyboardButton("💪 Intermedio (6m - 2 años)", callback_data="niv:intermedio")],
+            [InlineKeyboardButton("🔥 Avanzado (> 2 años)",      callback_data="niv:avanzado")],
+        ])
+        await query.edit_message_text(
+            "✅ Objetivo guardado.\n\n<b>Paso 2/4</b> — ¿Cuál es tu nivel de experiencia en el gym?",
+            reply_markup=teclado, parse_mode="HTML"
+        )
+        return
+
+    # ── SELECCIÓN DE NIVEL ────────────────────────────────────────────
+    if data.startswith("niv:"):
+        await query.answer()
+        nivel = data.split(":")[1]
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO perfil_usuario (user_id, nivel)
+            VALUES (?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET nivel = excluded.nivel, updated_at = CURRENT_TIMESTAMP
+        """, (user_id, nivel))
+        conn.commit()
+        conn.close()
+        # Paso 3: limitaciones físicas
+        teclado = InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ Sin limitaciones",         callback_data="lim:ninguna")],
+            [InlineKeyboardButton("🦵 Rodilla delicada",        callback_data="lim:rodilla")],
+            [InlineKeyboardButton("🔙 Espalda baja",            callback_data="lim:espalda")],
+            [InlineKeyboardButton("💪 Hombro lesionado",        callback_data="lim:hombro")],
+        ])
+        await query.edit_message_text(
+            "✅ Nivel guardado.\n\n<b>Paso 3/4</b> — ¿Tienes alguna limitación física?\n"
+            "<i>Esto ajusta los ejercicios para que sean seguros para ti.</i>",
+            reply_markup=teclado, parse_mode="HTML"
+        )
+        return
+
+    # ── SELECCIÓN DE LIMITACIONES ─────────────────────────────────────
+    if data.startswith("lim:"):
+        await query.answer()
+        lim = data.split(":")[1]
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO perfil_usuario (user_id, limitaciones)
+            VALUES (?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET limitaciones = excluded.limitaciones, updated_at = CURRENT_TIMESTAMP
+        """, (user_id, lim))
+        conn.commit()
+        conn.close()
+        # Paso 4: días
         teclado = InlineKeyboardMarkup([
             [InlineKeyboardButton(f"{i} días a la semana", callback_data=f"dias:{i}")]
             for i in [3, 4, 5]
         ])
-        await query.edit_message_text("¡Excelente! 🎯\n\n¿Cuántos días a la semana quieres entrenar?", reply_markup=teclado)
+        await query.edit_message_text(
+            "✅ Listo.\n\n<b>Paso 4/4</b> — ¿Cuántos días por semana puedes entrenar?",
+            reply_markup=teclado, parse_mode="HTML"
+        )
         return
 
     # ── SELECCIÓN DE DÍAS → GENERA PLAN ──────────────────────────────
@@ -685,15 +797,25 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         objetivo = row[0] if row and row[0] else "general"
 
         await query.edit_message_text("⏳ <i>Diseñando tu plan perfecto... Dame unos segundos.</i>", parse_mode="HTML")
-        prompt = (f"Genera el plan completo de 4 semanas en JSON estricto. "
-                  f"Usa SOLO el catálogo. OBJETIVO: {objetivo}. "
-                  f"DÍAS POR SEMANA: Exactamente {dias} días.")
+        # Cargar perfil completo
+        conn2 = sqlite3.connect(DB_PATH)
+        cur2 = conn2.cursor()
+        cur2.execute("SELECT nivel, limitaciones FROM perfil_usuario WHERE user_id = ?", (user_id,))
+        row2 = cur2.fetchone()
+        conn2.close()
+        nivel = row2[0] if row2 else "principiante"
+        limitaciones = row2[1] if row2 else "ninguna"
+
+        perfil = {"objetivo": objetivo, "dias": int(dias), "nivel": nivel, "limitaciones": limitaciones}
+        system_prompt_dinamico = construir_system_prompt(perfil)
+        prompt = (f"Genera el plan de 4 semanas en JSON estricto para: "
+                  f"objetivo={objetivo}, nivel={nivel}, {dias} días/semana, limitaciones={limitaciones}.")
         try:
             client = genai.Client(api_key=os.environ.get('GEMINI_API_KEY'))
             resp = client.models.generate_content(
                 model='gemini-2.0-flash',
                 contents=prompt,
-                config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT)
+                config=types.GenerateContentConfig(system_instruction=system_prompt_dinamico)
             )
             exito, msj = sanitizar_e_insertar_plan(resp.text, user_id)
             if exito:
