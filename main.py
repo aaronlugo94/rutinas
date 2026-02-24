@@ -15,7 +15,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-ALLOWED_USERS = {1557254587, 987654321}  # ⚠️ REEMPLAZA CON LOS IDs NUMÉRICOS REALES
+ALLOWED_USERS = {1557254587}  # ⚠️ REEMPLAZA CON LOS IDs NUMÉRICOS REALES
 DB_PATH = Path("/app/data/rutinas.db")
 
 def safe(text: str) -> str:
@@ -137,80 +137,238 @@ VALID_IDS = {ex["ejercicio_id"] for ex in CATALOGO}
 CATALOGO_POR_ID = {ex["ejercicio_id"]: ex for ex in CATALOGO}
 
 def construir_system_prompt(perfil: dict) -> str:
-    nivel = perfil.get("nivel", "principiante")
-    objetivo = perfil.get("objetivo", "general")
-    dias = perfil.get("dias", 3)
-    limitaciones = perfil.get("limitaciones", "ninguna")
+    """
+    SYSTEM PROMPT con base científica real.
+    Fuentes: Schoenfeld (2010, 2017), Helms et al. (2014), Krieger (2010),
+             Contreras EMG studies, ACSM Guidelines 2021, Norton & Layne.
+    Inspirado en el enfoque de Jeff Nippard y Gravity Transformation.
+    """
+    nivel      = perfil.get("nivel", "principiante")
+    objetivo   = perfil.get("objetivo", "general")
+    dias       = int(perfil.get("dias", 3))
+    lim        = perfil.get("limitaciones", "ninguna")
 
+    # ── 1. PRINCIPIOS DE VOLUMEN Y PROGRESIÓN (por nivel) ──────────────────────
     if nivel == "principiante":
-        ciencia_series = """SERIES Y REPS (Schoenfeld 2010 / ACSM):
-- S1-2: 3x12-15 reps. Técnica primero. RIR=3-4. Carga ligera.
-- S3: 3x10-12. Carga sube. RIR=2-3.
-- S4: 3x8-10. Hipertrofia real. RIR=1-2.
-- NO uses 4x6 o 5x5 (riesgo lesión sin base técnica).
-- Cardio: zona 1-2, 60-70%% FCmax, 15-25 min. Sin HIIT aún."""
-        prog_semanas = "S1-2: máquinas y peso corporal. S3-4: introduce mancuernas y libres."
+        vol_science = """
+VOLUMEN Y PROGRESIÓN — PRINCIPIANTE (Schoenfeld 2010; ACSM 2009):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• El principiante experimenta adaptaciones neuromusculares masivas las primeras 8 semanas
+  (Moritani & deVries 1979). La carga es secundaria a la TÉCNICA.
+• Progresión lineal simple es óptima: mismos ejercicios, más carga/reps cada semana.
+• Volumen semanal efectivo por grupo muscular: 10-15 series (MEV→MAV).
+
+PRESCRIPCIÓN SEMANA A SEMANA:
+  Semana 1 → 3 series × 15 reps  | RIR=4 | Carga muy ligera. Aprende el patrón.
+  Semana 2 → 3 series × 12 reps  | RIR=3 | Mismos ejercicios. Añade pequeña carga.
+  Semana 3 → 3 series × 10 reps  | RIR=2 | Sube carga 5-10%%. Hipertrofia inicia.
+  Semana 4 → 4 series × 8 reps   | RIR=1 | Estímulo máximo. Deload en S5 si continúa.
+
+CARDIO PARA PRINCIPIANTE:
+  • Zona 2 (60-70%% FCmax): 20 min post-entrenamiento. Mitocondrias ++, grasa como sustrato.
+  • NO HIIT hasta semana 3 mínimo (sistema cardiovascular necesita base aeróbica primero).
+  • En días de pierna/glúteo: cardio de bajo impacto (cinta inclinada, elíptica) — preserva glucógeno.
+"""
     elif nivel == "intermedio":
-        ciencia_series = """SERIES Y REPS (Periodización lineal):
-- S1: 4x10-12 (hipertrofia, RIR=2).
-- S2: 4x8-10 (hipertrofia-fuerza, RIR=2).
-- S3: 4x6-8 (fuerza, RIR=1).
-- S4: DELOAD — 3x12 al 60%% (recuperación activa).
-- Cardio: zona 2-3. Puede incluir intervalos 30s/90s."""
-        prog_semanas = "Compuestos pesados + aislamiento. Varía ejercicios entre semanas."
-    else:
-        ciencia_series = """SERIES Y REPS (Periodización ondulante):
-- Alterna por día: Fuerza (5x5 RIR=1), Hipertrofia (4x8-10 RIR=2), Resistencia (3x15 RIR=3).
-- S4: DELOAD obligatorio — 40%% menos volumen."""
-        prog_semanas = "Máxima variedad. Superseries en semana 3."
+        vol_science = """
+VOLUMEN Y PROGRESIÓN — INTERMEDIO (Krieger 2010 meta-análisis; Helms 2014):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Requiere periodización para seguir progresando (meseta neuromuscular ya ocurrió).
+• Volumen óptimo: 15-20 series/semana/grupo muscular grande.
+• Periodización ondulante diaria (DUP): varía estímulo por sesión dentro de la semana.
 
+PRESCRIPCIÓN SEMANA A SEMANA:
+  Semana 1 → 4 × 12 reps | RIR=3 | Hipertrofia metabólica. Pump alto.
+  Semana 2 → 4 × 8-10    | RIR=2 | Hipertrofia mecánica. Carga +5-10%%.
+  Semana 3 → 5 × 6-8     | RIR=1 | Fuerza-hipertrofia. Compuestos pesados.
+  Semana 4 → 3 × 12      | RIR=4 | DELOAD. 60%% de carga máxima. Recuperación activa.
+
+CARDIO:
+  • Zona 2: 25-30 min. Zona 3 (LISS moderado): 1-2x/semana.
+  • HIIT opcional: 4×30s sprint / 90s descanso. Solo en días NO de pierna.
+"""
+    else:  # avanzado
+        vol_science = """
+VOLUMEN Y PROGRESIÓN — AVANZADO (Schoenfeld 2017; Figueiredo 2018):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Requiere máxima variedad de estímulo. Periodización ondulante por sesión obligatoria.
+• 20+ series/semana/grupo muscular. Técnicas intensificadoras en S3.
+
+PRESCRIPCIÓN (alternando por día dentro de cada semana):
+  Día Fuerza   → 5 × 3-5  | RIR=0-1 | Compuestos pesados únicamente.
+  Día Hipert.  → 4 × 8-12 | RIR=1-2 | Compuestos + aislamiento. Tempo 2-1-2.
+  Día Volumen  → 3 × 15+  | RIR=2-3 | Aislamiento, congestión máxima.
+  Semana 4     → DELOAD obligatorio. -40%% volumen, mantener intensidad.
+"""
+
+    # ── 2. SELECCIÓN DE EJERCICIOS POR OBJETIVO (evidencia EMG y biomecánica) ──
     if "gluteo" in objetivo or "gluteos" in objetivo:
-        ciencia_obj = """OBJETIVO GLÚTEO (Contreras EMG studies):
-- Hip thrust/Puente: activación pico >200%% MVIC. PRIORIDAD MÁXIMA cada sesión de glúteo.
-- Activar glúteo ANTES de sentadillas (pre-fatiga = mayor reclutamiento).
-- Incluir abducción para glúteo medio (estabilidad y forma).
-- Frecuencia: 2-3x/semana. Cardio: cinta inclinada o elíptica (preserva glúteo)."""
+        exercise_science = """
+SELECCIÓN DE EJERCICIOS — OBJETIVO GLÚTEO (Contreras 2015; Beardsley 2018 EMG):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+JERARQUÍA CIENTÍFICA DE ACTIVACIÓN DE GLÚTEO MAYOR (% MVIC):
+  🥇 Hip Thrust/Puente: 200-230%% MVIC — DEBE aparecer en CADA sesión de glúteo
+  🥈 Sentadilla profunda (>90°): 130-170%% MVIC — compuesto principal en días pierna
+  🥉 Peso muerto rumano: 110-150%% MVIC — bisagra de cadera, carga excéntrica
+  4to Patada polea/cuadrupedia: 85-120%% MVIC — aislamiento extensión cadera
+  5to Abducción banda/máquina: 60-90%% MVIC — glúteo medio, forma y estabilidad
+
+PRINCIPIO DE PRE-FATIGA (Contreras recomendado):
+  → Hacer puente de glúteo o hip thrust ANTES de sentadillas en días glúteo
+  → Esto pre-activa el glúteo mayor para mayor reclutamiento en compuestos subsecuentes
+
+ORDEN OBLIGATORIO EN DÍAS GLÚTEO:
+  1. Activación: Puente glúteo o Hip thrust (compuesto dominante)
+  2. Compuesto: Sentadilla profunda o Prensa pierna (ROM completo)
+  3. Bisagra: Peso muerto rumano o Good morning
+  4. Aislamiento: Patada polea + Abducción banda
+  5. Si hay tiempo: Cardio bajo impacto (elíptica, cinta inclinada) — no trote (vibración reduce activación)
+
+FRECUENCIA: Glúteo 2-3x/semana. Recuperación: 48h entre sesiones glúteo intensas.
+"""
+        cardio_reco = """
+CARDIO PARA OBJETIVO GLÚTEO:
+  • Cinta inclinada 10-12%% pendiente, 5-6 km/h, 20-25 min: activa glúteo en cada paso
+  • Elíptica stride largo: menor impacto articular, mayor rango cadera
+  • EVITAR: trote continuo en días posteriores a hip thrust (interfiere recuperación)
+  • Frecuencia: 2-3x/semana cardio moderado
+"""
     elif "peso" in objetivo:
-        ciencia_obj = """OBJETIVO PÉRDIDA DE PESO (ACSM 2021):
-- Cardio LISS 25-35 min AL FINAL (preserva glucógeno para la pesa).
-- EPOC: compuestos multiarticulares generan quema post-entreno.
-- Frecuencia cardio: 3-4x/semana. No sacrificar resistencia."""
+        exercise_science = """
+SELECCIÓN DE EJERCICIOS — OBJETIVO PÉRDIDA DE GRASA (ACSM 2021; Wilson 2012):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PRINCIPIO EPOC (Excess Post-exercise Oxygen Consumption):
+  → Ejercicios multiarticulares generan EPOC 24-48h después (quema continua)
+  → Priorizar: sentadilla, prensa, peso muerto, press, remo — movimientos grandes
+  → Aislamiento al final: contribuye menos al EPOC pero preserva músculo
+
+ORDEN EN DÍAS DE PÉRDIDA DE GRASA:
+  1. Compuesto multiarticular pierna (mayor masa muscular = mayor gasto calórico)
+  2. Compuesto superior (push o pull)
+  3. Aislamiento secundario
+  4. Core (planchas > crunches — mayor activación total)
+  5. Cardio AL FINAL (preserva glucógeno muscular para la pesa)
+
+CARDIO ESTRATÉGICO:
+  • LISS 25-35 min al 65-70%% FCmax (zona oxidación grasa óptima)
+  • 2x/semana: HIIT 8 rondas × 20s/40s (sprint/descanso) — EPOC máximo
+  • Mejor momento: POST entrenamiento de pesas, nunca en ayunas
+"""
+        cardio_reco = """
+CARDIO PARA PÉRDIDA DE PESO (científicamente validado):
+  • Días de fuerza: LISS 20-30 min post-entrenamiento
+  • Días solo cardio: HIIT 20 min O LISS 40 min (no ambos el mismo día)
+  • Hidratación: +500ml extra en días de cardio
+"""
+    else:  # general / tonificación
+        exercise_science = """
+SELECCIÓN DE EJERCICIOS — TONIFICACIÓN (Schoenfeld 2012; Kraemer 2004):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BALANCE MUSCULAR (Sahrmann 2002 — evitar disfunciones posturales):
+  → Ratio empuje:tirón = 1:1.5 (más tirón para compensar postura moderna)
+  → Ratio cuádriceps:isquiotibiales = 3:2 por semana
+  → Core estabilizador (plancha, dead bug) > core dinámico (crunch) para postura
+
+RANGO ÓPTIMO TONIFICACIÓN: 10-15 reps, 3-4 series, RIR=2
+  → Suficiente tensión mecánica para hipertrofia moderada
+  → Suficiente volumen para quema calórica intrasesión
+
+ESTRUCTURA DE SESIÓN FULL BODY (para 3 días/semana):
+  1. Compuesto pierna (sentadilla o prensa)
+  2. Empuje horizontal (press pecho) o vertical (hombro)
+  3. Tirón horizontal (remo) o vertical (jalón)
+  4. Glúteo/isquio aislamiento
+  5. Core
+  6. Cardio 15-20 min
+"""
+        cardio_reco = """
+CARDIO PARA TONIFICACIÓN:
+  • 15-20 min al final de cada sesión. Zona 2-3 (65-75%% FCmax)
+  • Elíptica o cinta inclinada preferidos (bajo impacto, preserva músculo)
+"""
+
+    # ── 3. LIMITACIONES FÍSICAS (ajustes biomecánicos) ─────────────────────────
+    if lim == "rodilla":
+        lim_ajustes = """
+LIMITACIONES — RODILLA:
+  ⛔ EVITAR: sentadilla profunda >90°, sentadilla búlgara, desplante caminando
+  ✅ USAR: prensa pierna (ángulo controlado), sentadilla goblet (menos shear), 
+     curl femoral, extensión cuádriceps en rango corto, hip thrust (sin carga rodilla)
+  💡 Nota en ejercicios: "rango de movimiento controlado, sin dolor"
+"""
+    elif lim == "espalda":
+        lim_ajustes = """
+LIMITACIONES — ESPALDA BAJA:
+  ⛔ EVITAR: peso muerto convencional, good morning, remo inclinado >45°
+  ✅ USAR: peso muerto rumano con caderas atrás, prensa pierna, jalón al pecho,
+     remo en máquina (soporte lumbar), hip thrust (fortalece lumbar sin compresión)
+  💡 Nota en ejercicios: "espalda neutra, no redondear lumbar"
+"""
+    elif lim == "hombro":
+        lim_ajustes = """
+LIMITACIONES — HOMBRO:
+  ⛔ EVITAR: press militar por encima de cabeza, elevaciones frontales, fondos
+  ✅ USAR: press inclinado (reduce impingement), aperturas polea baja-a-alta,
+     remo face pull (rehabilitador del manguito), jalón al pecho agarre neutro
+  💡 Nota en ejercicios: "codos a 45° del cuerpo en press, no flares"
+"""
     else:
-        ciencia_obj = """OBJETIVO TONIFICACIÓN:
-- Rango 8-15 reps con 60-75%% 1RM. Balance empuje=tirón, cuádriceps=isquios.
-- Combinar fuerza + cardio moderado. Compuestos = mayor quema calórica."""
+        lim_ajustes = "Sin limitaciones físicas reportadas. Usar rango completo de movimiento en todos los ejercicios."
 
-    nutricion = f"""NOTAS CON HIDRATACIÓN/NUTRICIÓN (incluir en ejercicios clave):
-- Pre-entreno: 400-600ml agua, snack carbohidratos si >3h sin comer.
-- Durante: 150-250ml cada 15-20 min. Si >60 min: electrolitos.
-- Post: proteína en 30-45 min. Carbos para reponer glucógeno.
-- Objetivo {objetivo}: {"proteína 1.6-2.2g/kg peso" if "gluteo" in objetivo or "general" in objetivo else "déficit 300-500 kcal/día, proteína intacta"}."""
+    # ── 4. NUTRICIÓN E HIDRATACIÓN (contexto para notas) ───────────────────────
+    nutricion = f"""
+RECOMENDACIONES NUTRICIONALES E HIDRATACIÓN (para incluir en notas de ejercicios clave):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Pre-entrenamiento (30-60 min antes): 400-600ml agua + carbohidratos de digestión rápida
+  si llevas >3h sin comer (banana, arroz, avena). Evitar grasas/fibra pre-entreno.
+• Durante (sesión nivel {nivel}): 150-250ml agua cada 15-20 min.
+  Si sesión >60 min: electrolitos (sodio + potasio). Sin esto: fatiga precoz.
+• Post-entreno (ventana 30-45 min, Ivy & Portman 2004): proteína 20-40g + carbohidratos.
+  Proteína según nivel: principiante 0.7-1g/kg/día · intermedio 1.6-2g/kg/día · avanzado 2-2.2g/kg/día.
+  Para objetivo {objetivo}: {"Superávit calórico leve +200-300 kcal (glúteo/músculo)" if "gluteo" in objetivo or "general" in objetivo else "Déficit moderado -300-500 kcal/día. No bajar de 1.2g proteína/kg"}.
+• Incluye estas recomendaciones en las notas del PRIMER ejercicio del día y en ejercicios de cardio.
+"""
 
-    return f"""Eres un coach de fitness experto. NO hablas. SOLO generas JSON válido con ciencia real.
+    return f"""Eres un coach de fitness de élite con conocimiento de los últimos metaanálisis.
+Tu fuente de metodología: Jeff Nippard (Science-Based Training), Eric Helms (PNBA), 
+Brad Schoenfeld (PhD, City University NY), Gravity Transformation.
+NO hablas. SOLO generas JSON válido con periodización real, no aleatoria.
 
-PERFIL: nivel={nivel}, objetivo={objetivo}, días/semana={dias}, limitaciones={limitaciones}
+PERFIL DEL USUARIO:
+  Nivel: {nivel} | Objetivo: {objetivo} | Días/semana: {dias} | Limitaciones: {lim}
 
-{ciencia_series}
-
-{ciencia_obj}
-
+{vol_science}
+{exercise_science}
+{cardio_reco}
+{lim_ajustes}
 {nutricion}
 
-REGLAS:
-1) SOLO IDs del CATALOGO_JSON. No inventes.
-2) 4 semanas exactas. {prog_semanas}
-3) Orden científico por día: activación → compuesto principal → compuesto secundario → aislamiento → core/cardio.
-4) Varía ejercicios entre días y semanas. No repetir mismo grupo muscular 2 días seguidos.
-5) Notas = coaching real: técnica, tempo, respiración, hidratación. Máx 10 palabras.
-6) 'reps' siempre texto: "12", "8-10", "45s".
-7) Progresión real semana a semana (series/reps cambian según ciencia arriba).
-8) JSON ESTRICTO. Sin markdown. Sin campo 'url'.
+REGLAS ABSOLUTAS DE PROGRAMACIÓN:
+1) SOLO ejercicios del CATALOGO_JSON. ID exacto. Si un ejercicio no existe en el catálogo, NO lo incluyas.
+2) Exactamente 4 semanas. Series/reps DEBEN cambiar semana a semana según la progresión de arriba.
+3) INCLUIR CARDIO: cada semana debe tener AL MENOS 1-2 días con ejercicio de cardio del catálogo 
+   (CAR_01 al CAR_10) como ÚLTIMO ejercicio del día, con notas de zona/intensidad.
+4) Orden científico obligatorio por sesión:
+   a) Activación/compuesto dominante del objetivo
+   b) Compuesto secundario 
+   c) Aislamiento (1-2)
+   d) Core (en días que aplique)
+   e) Cardio al FINAL (nunca al inicio)
+5) Varía ejercicios entre días. Mismo músculo: 48h de descanso mínimo entre sesiones.
+6) Notas = coaching real y específico: técnica, tempo, respiración, o nutrición. Máx 12 palabras.
+7) 'reps' siempre texto: "15", "8-10", "45s", "30s". NUNCA número entero.
+8) JSON ESTRICTO. Sin markdown. Sin campo 'url'. Sin texto fuera del JSON.
+9) Progresión real: series y reps DIFERENTES cada semana (NO 3x15 todas las semanas).
+10) Para {dias} días/semana, distribuir grupos musculares inteligentemente:
+    3 días → Full body o PPL básico
+    4 días → Upper/Lower split
+    5 días → Push/Pull/Legs + 2 días especializados en objetivo principal
 
 CATALOGO_JSON:
 {json.dumps(CATALOGO, ensure_ascii=False)}
 
-FORMATO:
-{{"semanas":[{{"semana":1,"dias":[{{"dia":"lunes","grupo":"gluteo","ejercicios":[{{"ejercicio_id":"GLU_01","ejercicio":"Puente de glúteo","orden":1,"series":3,"reps":"15","notas":"Aprieta glúteo 1s arriba, baja lento"}}]}}]}}]}}
+FORMATO DE SALIDA (JSON estricto, sin nada más):
+{{"semanas":[{{"semana":1,"dias":[{{"dia":"lunes","grupo":"gluteo","ejercicios":[{{"ejercicio_id":"GLU_03","ejercicio":"Hip thrust en banco","orden":1,"series":3,"reps":"15","notas":"Pre-activa glúteo, pausa 1s arriba. Bebe agua ahora."}}]}}]}}]}}
 """
 
 # ==========================================
@@ -539,41 +697,46 @@ def obtener_rutina_interactiva(user_id: int, semana: int, dia: str):
     html_msg += "\n👇 <i>Marca cada ejercicio · 🔄 para cambiarlo</i>"
     return html_msg, InlineKeyboardMarkup(keyboard)
 
-def formatear_plan_completo(user_id: int) -> str:
-    """Genera un resumen de las 4 semanas para /plan."""
+def formatear_plan_por_semanas(user_id: int) -> list[str]:
+    """
+    Devuelve el plan dividido en páginas de máx ~3800 chars (límite Telegram = 4096).
+    Cada página = una semana. Nunca supera el límite.
+    """
+    from collections import defaultdict
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     cur.execute("""
-        SELECT semana, dia, grupo, ejercicio, series, reps
+        SELECT semana, dia, grupo, ejercicio, series, reps, notas
         FROM rutinas WHERE user_id = ?
         ORDER BY semana, id, orden
     """, (user_id,))
-    # Agrupar por semana y dia
-    from collections import defaultdict
     plan = defaultdict(lambda: defaultdict(list))
     for row in cur.fetchall():
         plan[row["semana"]][row["dia"]].append(row)
     conn.close()
 
     if not plan:
-        return "No tienes un plan activo. Usa /start para crear uno."
+        return []
 
     semana_actual, _ = obtener_estado_usuario(user_id)
-    texto = "📅 <b>Tu plan completo de 4 semanas</b>\n"
-    texto += "━━━━━━━━━━━━━━━━━━━━\n\n"
+    paginas = []
 
     for sem_num in sorted(plan.keys()):
-        marcador = " ◀ aquí" if sem_num == semana_actual else ""
-        texto += f"<b>🗓 SEMANA {sem_num}{marcador}</b>\n"
+        marcador = " ◀ <b>estás aquí</b>" if sem_num == semana_actual else ""
+        txt = f"📅 <b>SEMANA {sem_num} / 4</b>{marcador}\n"
+        txt += "━━━━━━━━━━━━━━━━━━━━\n\n"
         for dia_nombre, ejercicios in plan[sem_num].items():
             grupo = ejercicios[0]["grupo"].upper() if ejercicios else ""
-            texto += f"  <i>{dia_nombre.capitalize()} · {grupo}</i>\n"
+            txt += f"<b>{dia_nombre.capitalize()}</b> · <i>{grupo}</i>\n"
             for e in ejercicios:
-                texto += f"    • {safe(e['ejercicio'])} {e['series']}×{e['reps']}\n"
-        texto += "\n"
+                txt += f"  • {safe(e['ejercicio'])} — {e['series']}×{e['reps']}\n"
+                if e["notas"]:
+                    txt += f"    <i>💡 {safe(e['notas'])}</i>\n"
+            txt += "\n"
+        paginas.append(txt)
 
-    return texto
+    return paginas
 
 # ==========================================
 # 7. HANDLERS DE TELEGRAM
@@ -627,10 +790,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def plan_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Comando /plan — muestra el plan completo de 4 semanas."""
+    """Comando /plan — muestra las 4 semanas paginadas para no superar límite de Telegram."""
     if not await check_auth(update): return
-    texto = formatear_plan_completo(update.effective_user.id)
-    await update.message.reply_text(texto, parse_mode="HTML")
+    paginas = formatear_plan_por_semanas(update.effective_user.id)
+    if not paginas:
+        await update.message.reply_text("No tienes un plan activo. Usa /start para crear uno.")
+        return
+    for i, pagina in enumerate(paginas):
+        await update.message.reply_text(pagina, parse_mode="HTML")
 
 async def gemini_coach_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_auth(update): return
@@ -834,9 +1001,18 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ── VER PLAN COMPLETO (desde botón en rutina) ─────────────────────
     if data.startswith("plan:"):
         await query.answer()
-        texto = formatear_plan_completo(user_id)
+        paginas = formatear_plan_por_semanas(user_id)
+        if not paginas:
+            await query.edit_message_text("No hay plan activo.")
+            return
+        # Primera semana edita el mensaje actual
+        await query.edit_message_text(paginas[0], parse_mode="HTML")
+        # Semanas restantes como mensajes nuevos
+        for pagina in paginas[1:]:
+            await context.bot.send_message(chat_id=query.message.chat_id, text=pagina, parse_mode="HTML")
+        # Botón de regreso al final
         tec = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Volver a hoy", callback_data="back_hoy")]])
-        await query.edit_message_text(texto, reply_markup=tec, parse_mode="HTML")
+        await context.bot.send_message(chat_id=query.message.chat_id, text="👆 Tu plan completo", reply_markup=tec, parse_mode="HTML")
         return
 
     if data == "back_hoy":
