@@ -11,7 +11,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 # --- CONFIGURACIÓN DE SEGURIDAD ---
 # Pon aquí tu ID de Telegram y el de tu esposa. 
 # Si no los sabes, mándale un mensaje a @userinfobot en Telegram.
-ALLOWED_USERS = {123456789, 987654321} 
+ALLOWED_USERS = {1557254587, 987654321} 
 
 def safe(text: str) -> str:
     """Escapa caracteres HTML para evitar que Telegram rompa el mensaje."""
