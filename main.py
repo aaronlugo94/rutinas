@@ -15,7 +15,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-ALLOWED_USERS = {123456789, 987654321}  # ⚠️ REEMPLAZA CON LOS IDs NUMÉRICOS REALES
+ALLOWED_USERS = {1557254587, 987654321}  # ⚠️ REEMPLAZA CON LOS IDs NUMÉRICOS REALES
 DB_PATH = Path("/app/data/rutinas.db")
 
 def safe(text: str) -> str:
