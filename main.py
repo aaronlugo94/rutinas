@@ -15,7 +15,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-ALLOWED_USERS = {1557254587, 987654321}  # ⚠️ REEMPLAZA CON LOS IDs NUMÉRICOS REALES
+ALLOWED_USERS = {123456789, 987654321}  # ⚠️ REEMPLAZA CON LOS IDs NUMÉRICOS REALES
 DB_PATH = Path("/app/data/rutinas.db")
 
 def safe(text: str) -> str:
@@ -277,7 +277,7 @@ def obtener_estado_usuario(user_id: int):
 def iniciar_estado_usuario(user_id: int):
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
-    cur.execute("SELECT dia FROM rutinas WHERE user_id = ? AND semana = 1 ORDER BY MIN(id) ASC LIMIT 1", (user_id,))
+    cur.execute("SELECT dia FROM rutinas WHERE user_id = ? AND semana = 1 ORDER BY id ASC LIMIT 1", (user_id,))
     row = cur.fetchone()
     primer_dia = row[0] if row else "lunes"
     cur.execute("""
