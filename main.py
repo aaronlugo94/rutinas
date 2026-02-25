@@ -134,155 +134,88 @@ CATALOGO = [
     {"ejercicio_id": "CAR_10", "nombre": "Step aeróbico en cajón",              "grupo": "cardio",  "rol": "cardio"},
 ]
 
-VALID_IDSS = {ex["ejercicio_id"] for ex in CATALOGO}
+VALID_IDS  = {ex["ejercicio_id"] for ex in CATALOGO}
 CATALOGO_POR_ID = {ex["ejercicio_id"]: ex for ex in CATALOGO}
 
 def construir_system_prompt(perfil: dict) -> str:
-    """
-    SYSTEM PROMPT científico y prescriptivo.
-    Fuentes: Schoenfeld (2010,2017), Contreras EMG, Helms (2014), ACSM 2021,
-             Jeff Nippard Science-Based Training, Gravity Transformation.
-    """
-    nivel        = perfil.get("nivel", "principiante")
-    objetivo     = perfil.get("objetivo", "general")
-    dias         = int(perfil.get("dias", 3))
-    lim          = perfil.get("limitaciones", "ninguna")
-    dur          = int(perfil.get("duracion_min", 60))
+    """System prompt compacto. El catálogo se pasa en el user prompt."""
+    nivel  = perfil.get("nivel", "principiante")
+    obj    = perfil.get("objetivo", "general")
+    dias   = int(perfil.get("dias", 3))
+    dur    = int(perfil.get("duracion_min", 60))
+    lim    = perfil.get("limitaciones", "ninguna")
 
-    # ── Ejercicios por sesión según duración (realista: ~12 min/ejercicio con descanso) ──
-    if dur == 45:
-        ej_por_dia = 3
-        dur_nota   = "3 ejercicios por día (45 min: calentamiento + 3 bloques + cardio opcional)"
-    elif dur == 90:
-        ej_por_dia = 5
-        dur_nota   = "5 ejercicios por día (90 min: calentamiento + 4 bloques de trabajo + cardio)"
-    else:  # 60 min
-        ej_por_dia = 4
-        dur_nota   = "4 ejercicios por día (60 min: calentamiento + 3 bloques de trabajo + cardio)"
+    if dur <= 45:
+        ej = 3
+    elif dur >= 90:
+        ej = 5
+    else:
+        ej = 4
 
-    # ── Progresión por nivel ──────────────────────────────────────────────────
     if nivel == "principiante":
-        progresion = f"""
-PROGRESIÓN SEMANA A SEMANA — PRINCIPIANTE (Schoenfeld 2010; ACSM 2009):
-Las primeras 8 semanas el cuerpo gana fuerza principalmente por adaptación neurológica.
-La técnica es más importante que la carga. Progresión lineal simple.
-
-  Semana 1 → 3 series × 15 reps  | RIR=4 | Aprender el patrón motor. Carga mínima.
-  Semana 2 → 3 series × 12 reps  | RIR=3 | Mismos ejercicios. +pequeña carga.
-  Semana 3 → 3 series × 10 reps  | RIR=2 | Hipertrofia inicia. Carga +10%%.
-  Semana 4 → 4 series × 8 reps   | RIR=1 | Máximo estímulo del bloque.
-
-VARIACIÓN DE EJERCICIOS: Semanas 1-2 usan ejercicios más simples (máquinas, peso corporal).
-Semanas 3-4 introducen mancuernas y ejercicios libres más complejos.
-NO repitas los mismos ejercicios exactos en S3-S4 que en S1-S2 si hay alternativas en el catálogo.
-PROHIBIDO en principiante: sentadilla búlgara S1, peso muerto convencional S1-S2.
-"""
+        prog = "S1:3x15 S2:3x12 S3:3x10 S4:4x8. S1-2 máquinas/básicos, S3-4 libres/mancuernas."
     elif nivel == "intermedio":
-        progresion = """
-PROGRESIÓN SEMANA A SEMANA — INTERMEDIO (Krieger 2010 meta-análisis):
-Requiere variación de estímulo. Periodización ondulante diaria (DUP).
-
-  Semana 1 → 4 series × 12 reps  | RIR=3 | Hipertrofia metabólica.
-  Semana 2 → 4 series × 8-10     | RIR=2 | Hipertrofia mecánica. +5-10%% carga.
-  Semana 3 → 4 series × 6-8      | RIR=1 | Fuerza-hipertrofia. Compuestos pesados.
-  Semana 4 → 3 series × 12       | RIR=4 | DELOAD activo. 60%% de carga máxima.
-
-VARIACIÓN OBLIGATORIA: Los ejercicios deben variar entre semanas, no solo las reps.
-Ejemplo: S1 usa sentadilla libre, S3 puede usar sentadilla búlgara o hack machine.
-"""
+        prog = "S1:4x12 S2:4x8-10 S3:4x6-8 S4:3x12 DELOAD."
     else:
-        progresion = """
-PROGRESIÓN — AVANZADO (Schoenfeld 2017; Figueiredo 2018):
-Periodización ondulante por sesión. Alternancia obligatoria de estímulo.
+        prog = "Alterna días: Fuerza 5x5 / Hipertrofia 4x10 / Volumen 3x15. S4 DELOAD."
 
-  Semana 1 → Día A: 5×5, Día B: 4×10-12, Día C: 3×15 (si aplica)
-  Semana 2 → Aumenta carga en A y B en 5%%.
-  Semana 3 → Añade 1 serie a A y B. Introduce técnicas intensificadoras.
-  Semana 4 → DELOAD: -40%% volumen, mantener intensidad.
-"""
-
-    # ── Protocolo por objetivo ────────────────────────────────────────────────
-    if "gluteo" in objetivo or "gluteos" in objetivo:
-        protocolo = f"""
-PROTOCOLO GLÚTEO — BASADO EN INVESTIGACIÓN EMG (Contreras 2015):
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-JERARQUÍA DE ACTIVACIÓN (% MVIC = % del máximo voluntario isométrico):
-  1. Hip Thrust / Puente de glúteo: 200-230%% MVIC → OBLIGATORIO en cada día de glúteo
-  2. Sentadilla >90° de profundidad: 130-170%% MVIC → compuesto pierna-glúteo principal
-  3. Peso muerto rumano: 110-150%% MVIC → bisagra de cadera, excéntrico largo
-  4. Patada de glúteo (polea/cuadrupedia): 85-120%% MVIC → aislamiento extensión cadera
-  5. Abducción (banda/máquina): 60-90%% MVIC → glúteo medio, imprescindible para forma
-
-ORDEN CIENTÍFICO EN DÍAS GLÚTEO (pre-fatiga + compuesto + aislamiento):
-  Posición 1: Hip thrust o puente (PRE-ACTIVACIÓN — antes del compuesto, no al final)
-  Posición 2: Sentadilla profunda o prensa pierna
-  Posición 3: Peso muerto rumano o bisagra de cadera
-  Posición 4: Patada de glúteo o abducción (solo si hay {ej_por_dia} ejercicios)
-  Posición final: Cardio bajo impacto (cinta inclinada o elíptica) — SIEMPRE en días glúteo
-
-FRECUENCIA GLÚTEO: 2 días de glúteo por semana mínimo.
-CARDIO GLÚTEO: cinta inclinada 10%% / 5-6km/h activa glúteo en cada paso (Contreras 2015).
-EVITAR trote en días post-hip thrust (recuperación interferida).
-"""
-    elif "peso" in objetivo:
-        protocolo = f"""
-PROTOCOLO PÉRDIDA DE GRASA (ACSM 2021; Wilson 2012 EPOC):
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PRINCIPIO EPOC: ejercicios multiarticulares grandes generan quema de calorías 24-48h post-entreno.
-Priorizar en posición 1 siempre: sentadilla, prensa, peso muerto, remo, press.
-
-CARDIO: SIEMPRE al final (preservar glucógeno para la pesa). 20-25 min zona 2-3.
-Cada día debe terminar con 1 ejercicio de cardio del catálogo.
-"""
+    if "gluteo" in obj:
+        obj_nota = "Glúteo: Hip thrust PRIMERO siempre (200% MVIC Contreras). Orden: hip thrust → sentadilla → PDR → aislamiento → cardio."
+    elif "peso" in obj:
+        obj_nota = "Pérdida peso: compuestos multiarticulares + cardio AL FINAL (EPOC). Zona 2 65-70% FCmax."
     else:
-        protocolo = f"""
-PROTOCOLO TONIFICACIÓN (balance muscular, Sahrmann 2002):
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Ratio empuje:tirón = 1:1.5 (más tirón por postura moderna).
-Full body para 3 días/semana. Upper/Lower para 4-5 días.
-Cardio 15 min al final de cada sesión.
-"""
+        obj_nota = "Tonificación: balance empuje=tirón, compuestos + aislamiento, cardio 15min final."
 
-    # ── Limitaciones ────────────────────────────────────────────────────────
     if lim == "rodilla":
-        limitaciones_nota = "RODILLA: PROHIBIDO sentadilla búlgara, desplante caminando, sentadilla libre con carga. USA: prensa pierna, sentadilla goblet, hip thrust, curl femoral."
+        lim_nota = "PROHIBIDO: sentadilla búlgara, desplante caminando. USA: prensa, goblet, hip thrust."
     elif lim == "espalda":
-        limitaciones_nota = "ESPALDA BAJA: PROHIBIDO peso muerto convencional, good morning, remo inclinado >45°. USA: prensa pierna, jalón al pecho, hip thrust, remo en máquina."
+        lim_nota = "PROHIBIDO: peso muerto convencional, good morning. USA: prensa, jalón, hip thrust."
     elif lim == "hombro":
-        limitaciones_nota = "HOMBRO: PROHIBIDO press militar, elevaciones frontales, fondos. USA: press inclinado (codos 45°), jalón agarre neutro, face pull, aperturas polea baja."
+        lim_nota = "PROHIBIDO: press militar, elevaciones frontales. USA: press inclinado 45°, face pull."
     else:
-        limitaciones_nota = "Sin limitaciones. Usar rango completo de movimiento siempre."
+        lim_nota = "Sin limitaciones."
 
-    return f"""Eres un coach de fitness de élite. Metodología: Jeff Nippard, Eric Helms PhD, Brad Schoenfeld PhD.
-NO hablas con nadie. SOLO output JSON válido. CERO texto fuera del JSON.
+    return f"""Eres un generador de planes de entrenamiento. SOLO produces JSON válido, NADA más.
 
-PERFIL: nivel={nivel} | objetivo={objetivo} | {dias} días/semana | sesión={dur} min | limitaciones={lim}
+PERFIL: nivel={nivel}, objetivo={obj}, {dias}días/sem, {dur}min/sesión, limitaciones={lim}
+EJERCICIOS POR DÍA: exactamente {ej} (el cardio cuenta como uno, siempre al final)
+PROGRESIÓN: {prog}
+OBJETIVO: {obj_nota}
+{lim_nota}
 
-{progresion}
-{protocolo}
-LIMITACIONES FÍSICAS: {limitaciones_nota}
+REGLAS ABSOLUTAS:
+1. SOLO IDs del CATALOGO que recibirás. Copia IDs exactos, sin inventar.
+2. Exactamente {ej} ejercicios por día. Ni más ni menos.
+3. Series/reps DISTINTAS cada semana según progresión.
+4. Al menos {max(1,dias-2)} días/semana deben terminar con cardio (CAR_01 a CAR_10).
+5. reps SIEMPRE string: "15" "8-10" "45s". NUNCA número.
+6. JSON PURO. Sin markdown. Sin texto. Sin campo url.
+7. Varía ejercicios entre semanas (S3-S4 ≠ S1-S2 cuando sea posible).
 
-PRESCRIPCIÓN EXACTA DE ESTRUCTURA DE SESIÓN:
-{dur_nota}
-El último ejercicio de los días que tengan cardio DEBE ser uno del grupo "cardio" del catálogo (CAR_01 a CAR_10).
-Para {dias} días/semana, el plan debe incluir cardio en AL MENOS {max(1, dias-2)} días por semana.
+FORMATO EXACTO (solo esto, nada más):
+{{"semanas":[{{"semana":1,"dias":[{{"dia":"lunes","grupo":"gluteo","ejercicios":[{{"ejercicio_id":"GLU_03","ejercicio":"Hip thrust en banco","orden":1,"series":3,"reps":"15","notas":"Pausa 1s arriba"}}]}}]}}]}}"""
 
-REGLAS ABSOLUTAS (violar alguna = plan inválido):
-1) SOLO ejercicios del CATALOGO_JSON. Copiar IDs exactos. Sin inventar.
-2) Exactamente {ej_por_dia} ejercicios por día (ni más, ni menos). El cardio cuenta como uno.
-3) Series y reps DISTINTAS cada semana, siguiendo la progresión arriba. NUNCA 3×15 las 4 semanas.
-4) Ejercicios DISTINTOS en S3-S4 vs S1-S2 cuando haya alternativas disponibles en el catálogo.
-5) Notas: coaching específico (técnica/respiración/nutrición). Máx 10 palabras. Sin relleno genérico.
-6) 'reps' = siempre string: "15", "8-10", "45s". NUNCA número entero.
-7) JSON ESTRICTO. Sin markdown. Sin campo 'url'. Sin explicaciones.
-8) Mismo grupo muscular: mínimo 48h entre sesiones intensas.
 
-CATALOGO_JSON:
-{json.dumps(CATALOGO, ensure_ascii=False)}
+def construir_prompt_usuario(perfil: dict) -> str:
+    """Prompt del usuario: incluye catálogo comprimido + instrucción."""
+    nivel  = perfil.get("nivel", "principiante")
+    obj    = perfil.get("objetivo", "general")
+    dias   = int(perfil.get("dias", 3))
+    dur    = int(perfil.get("duracion_min", 60))
+    lim    = perfil.get("limitaciones", "ninguna")
 
-OUTPUT (solo el JSON, nada más):
-{{"semanas":[{{"semana":1,"dias":[{{"dia":"lunes","grupo":"gluteo","ejercicios":[{{"ejercicio_id":"GLU_03","ejercicio":"Hip thrust en banco","orden":1,"series":3,"reps":"15","notas":"Pausa 1s arriba, aprieta glúteo máximo"}}]}}]}}]}}
-"""
+    # Catálogo comprimido: solo ID, nombre abreviado, grupo, rol
+    cat_comprimido = []
+    for e in CATALOGO:
+        cat_comprimido.append(f'{e["ejercicio_id"]}|{e["nombre"][:30]}|{e["grupo"]}|{e.get("rol","?")}')
+    cat_str = "\n".join(cat_comprimido)
+
+    return f"""CATALOGO (formato: ID|nombre|grupo|rol):
+{cat_str}
+
+Genera plan JSON de 4 semanas: objetivo={obj}, nivel={nivel}, {dias}días/sem, {dur}min/sesión, limitaciones={lim}.
+Usa SOLO los IDs del catálogo de arriba. JSON puro, nada más."""
+
 
 
 # ==========================================
@@ -890,15 +823,24 @@ async def gemini_coach_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action='typing')
     try:
         client = genai.Client(api_key=os.environ.get('GEMINI_API_KEY'))
-        resp = client.models.generate_content(
-            model='gemini-2.0-flash',
-            contents=update.message.text,
-            config=types.GenerateContentConfig(system_instruction=system_ctx)
+        loop = asyncio.get_event_loop()
+        resp = await asyncio.wait_for(
+            loop.run_in_executor(
+                None,
+                lambda ctx=system_ctx, txt=update.message.text: client.models.generate_content(
+                    model='gemini-2.0-flash',
+                    contents=txt,
+                    config=types.GenerateContentConfig(system_instruction=ctx)
+                )
+            ),
+            timeout=20
         )
         await update.message.reply_text(resp.text)
+    except asyncio.TimeoutError:
+        await update.message.reply_text("⏱ Gemini tardó demasiado. Intenta de nuevo.")
     except Exception:
         logger.exception("Error en coach conversacional")
-        await update.message.reply_text("Descansa un poco, usa el menú /start ❤️")
+        await update.message.reply_text("Descansa un poco, usa el menú ❤️")
 
 async def reset_plan_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Borra plan y progreso. Conserva los swaps del usuario (preferencias)."""
@@ -1151,10 +1093,8 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         perfil = {"objetivo": objetivo, "dias": int(dias), "nivel": nivel,
                   "limitaciones": limitaciones, "duracion_min": duracion_min}
         system_prompt_dinamico = construir_system_prompt(perfil)
-        prompt = (f"Genera el plan de 4 semanas en JSON estricto para: "
-                  f"objetivo={objetivo}, nivel={nivel}, {dias} días/semana, "
-                  f"duración={duracion_min} min/sesión, limitaciones={limitaciones}.")
-        MAX_INTENTOS = 2
+        prompt = construir_prompt_usuario(perfil)
+        MAX_INTENTOS = 3
         exito = False
         msj   = "Sin respuesta"
         for intento in range(1, MAX_INTENTOS + 1):
@@ -1167,16 +1107,17 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await asyncio.sleep(2)
 
                 client = genai.Client(api_key=os.environ.get('GEMINI_API_KEY'))
-                resp   = await asyncio.wait_for(
-                    asyncio.get_event_loop().run_in_executor(
+                loop = asyncio.get_event_loop()
+                resp = await asyncio.wait_for(
+                    loop.run_in_executor(
                         None,
-                        lambda: client.models.generate_content(
+                        lambda p=prompt, sp=system_prompt_dinamico: client.models.generate_content(
                             model='gemini-2.0-flash',
-                            contents=prompt,
-                            config=types.GenerateContentConfig(system_instruction=system_prompt_dinamico)
+                            contents=p,
+                            config=types.GenerateContentConfig(system_instruction=sp)
                         )
                     ),
-                    timeout=45
+                    timeout=90
                 )
                 exito, msj = sanitizar_e_insertar_plan(resp.text, user_id, ej_por_dia=duracion_min // 15)
                 if exito:
