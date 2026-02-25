@@ -142,6 +142,119 @@ CATALOGO = [
 VALID_IDS  = {ex["ejercicio_id"] for ex in CATALOGO}
 CATALOGO_POR_ID = {ex["ejercicio_id"]: ex for ex in CATALOGO}
 
+def construir_prompt_semana(perfil: dict, num_semana: int) -> str:
+    """
+    Prompt para generar UNA semana. JSON pequeño = sin truncamiento.
+    ~1500 chars de output vs 28000 para el plan completo.
+    """
+    obj   = perfil.get("objetivo", "general")
+    nivel = perfil.get("nivel", "principiante")
+    dias  = int(perfil.get("dias", 3))
+    dur   = int(perfil.get("duracion_min", 60))
+    lim   = perfil.get("limitaciones", "ninguna")
+
+    # Progresión por semana
+    if nivel == "principiante":
+        prog_sem = {1: "3×15 RIR=4", 2: "3×12 RIR=3", 3: "3×10 RIR=2", 4: "4×8 RIR=1"}
+        extra_s = {1: "Solo máquinas guiadas", 2: "Mismos ejercicios que S1 +peso",
+                   3: "Cambia a variantes libres/mancuernas", 4: "Máxima carga del bloque"}
+    elif nivel == "intermedio":
+        prog_sem = {1: "4×12 RIR=3", 2: "4×8-10 RIR=2", 3: "4×6-8 RIR=1", 4: "3×12 RIR=4 DELOAD 60% carga"}
+        extra_s = {1: "Hipertrofia metabólica", 2: "+5-10% carga vs S1",
+                   3: "Zona fuerza-hipertrofia", 4: "Deload activo, recuperación"}
+    else:
+        prog_sem = {1: "Fuerza 5×3-5 RIR=0", 2: "Hipertrofia 4×8-10 RIR=1",
+                    3: "Volumen 3×12-15 RIR=2", 4: "DELOAD 3×8 50% carga"}
+        extra_s = {1: "Solo compuestos pesados", 2: "Tempo 2-1-2 rango completo",
+                   3: "Congestión y aislamiento", 4: "Recuperación — no al fallo"}
+
+    series_reps = prog_sem[num_semana]
+    nota_semana = extra_s[num_semana]
+
+    # Catálogo comprimido en 6 líneas
+    grupos_orden = ["gluteo", "pierna", "empuje", "tiron", "core", "cardio"]
+    cat_lines = []
+    for g in grupos_orden:
+        ids = [e["ejercicio_id"] for e in CATALOGO if e["grupo"] == g]
+        cat_lines.append(f'{g.upper()}: {" ".join(ids)}')
+
+    return f"""IDs POR GRUPO:
+{chr(10).join(cat_lines)}
+
+Genera SOLO la semana {num_semana} en JSON.
+Parámetros: obj={obj}, nivel={nivel}, {dias}días, {dur}min, lim={lim}
+Series/reps esta semana: {series_reps} — {nota_semana}
+
+Reglas: exactamente {3 if dur<=45 else (4 if dur<=60 else (5 if dur<=75 else 6))} ejercicios/día, cardio al final, reps en string.
+Notas: máx 5 palabras. Sin comillas en notas.
+
+Formato exacto (SOLO esto):
+{{"semana":{num_semana},"dias":[{{"dia":"lunes","grupo":"gluteo","ejercicios":[{{"ejercicio_id":"GLU_03","ejercicio":"Hip thrust en banco","orden":1,"series":3,"reps":"15","notas":"Pausa 1s arriba"}}]}}]}}"""
+
+
+def parsear_semana_json(raw: str, num_semana: int) -> tuple:
+    """
+    Parsea la respuesta de Gemini para UNA semana.
+    Devuelve (dict_semana, error_string).
+    """
+    try:
+        # Limpiar markdown
+        text = raw.strip()
+        for prefix in ["```json", "```JSON", "```"]:
+            if text.startswith(prefix):
+                text = text[len(prefix):]
+                break
+        if text.endswith("```"):
+            text = text[:-3]
+        # Extraer JSON
+        start = text.find("{")
+        end   = text.rfind("}")
+        if start == -1 or end == -1:
+            return None, "No se encontró JSON"
+        data = json.loads(text[start:end+1])
+
+        # Validar estructura básica
+        if "dias" not in data:
+            return None, "Falta campo 'dias'"
+        if not data["dias"]:
+            return None, "dias vacío"
+
+        # Normalizar y validar ejercicios
+        for d in data["dias"]:
+            if "grupo" not in d:
+                for e in d.get("ejercicios", []):
+                    eid = str(e.get("ejercicio_id", ""))
+                    if eid in CATALOGO_POR_ID:
+                        d["grupo"] = CATALOGO_POR_ID[eid]["grupo"]
+                        break
+                if "grupo" not in d:
+                    d["grupo"] = "general"
+
+            for e in d.get("ejercicios", []):
+                eid = str(e.get("ejercicio_id", ""))
+                if eid not in VALID_IDS:
+                    return None, f"ID inválido: {eid}"
+                # Siempre nombre del catálogo
+                e["ejercicio"] = CATALOGO_POR_ID[eid]["nombre"]
+                # reps como string
+                if not isinstance(e.get("reps", ""), str):
+                    e["reps"] = str(e.get("reps", "10"))
+                # Sanear notas
+                nota = str(e.get("notas", "")).replace('"','').replace("'",'').strip()[:60]
+                e["notas"] = nota
+                # series como int
+                try: e["series"] = int(e.get("series", 3))
+                except: e["series"] = 3
+
+        data["semana"] = num_semana
+        return data, None
+
+    except json.JSONDecodeError as ex:
+        return None, f"JSON inválido: {ex}"
+    except Exception as ex:
+        return None, f"Error: {ex}"
+
+
 def construir_system_prompt(perfil: dict) -> str:
     """
     System prompt con ciencia aplicada real.
@@ -154,7 +267,16 @@ def construir_system_prompt(perfil: dict) -> str:
     dur   = int(perfil.get("duracion_min", 60))
     lim   = perfil.get("limitaciones", "ninguna")
 
-    ej = 3 if dur <= 45 else (5 if dur >= 90 else 4)
+    # Ejercicios por sesión: calibrado para tiempo real de gym
+    # Nippard: calidad > cantidad, pero avanzados necesitan más volumen (Schoenfeld 2017)
+    if dur <= 45:
+        ej = 3   # 45min: 3 trabajos + cardio = sesión completa
+    elif dur <= 60:
+        ej = 4   # 60min: estándar científico óptimo
+    elif dur <= 75:
+        ej = 5   # 75min: intermedio-avanzado
+    else:
+        ej = 6   # 90min: volumen completo para avanzados (Krieger: 10-20 series/grupo)
 
     # ── SPLIT CIENTÍFICO ──────────────────────────────────────────────────────
     # Principio: frecuencia 2x/semana por grupo = superior a 1x (Schoenfeld 2016 meta-análisis)
@@ -258,11 +380,24 @@ CAMBIO EJERCICIOS: S3 introduce ejercicio más complejo que S1 (ej: Smith → ba
     else:
         lim_nota = "Sin limitaciones. Priorizar rango completo de movimiento en todos los ejercicios (mayor activación muscular — Pinto 2012)."
 
+    genero = perfil.get("genero", "mujer")
+    if genero == "hombre":
+        genero_nota = """ÉNFASIS HOMBRE (Shmonenko / Nippard male hypertrophy):
+  Upper body prioridad: pecho, espalda ancha, hombros 3D, brazos definidos.
+  Lower body: sentadilla pesada, peso muerto, prensa — NO excesivo trabajo glúteo aislado.
+  Split hombre: más volumen en press (4-5 sets/día empuje), más remo y jalón (espalda V-taper).
+  Días pierna: sentadilla frontal + prensa + isquio + pantorrilla. Sin abducción de banda."""
+    else:
+        genero_nota = """ÉNFASIS MUJER (Contreras / Vikika Costa / Sascha Fitness):
+  Lower body prioridad: glúteo máximo, pierna tonificada, talle definido.
+  Upper body: tonificación sin volumen excesivo — jalón, remo ligero, press inclinado suave.
+  Cardio: integrar siempre al final de días lower. Zona 2 para oxidación grasa."""
+
     return f"""Eres un coach de fitness de élite con PhD en ciencias del ejercicio. Metodología: Schoenfeld, Contreras, Nippard, Ethier.
 SOLO produces JSON válido. CERO texto fuera del JSON.
 
 PERFIL DEL USUARIO:
-  Nivel: {nivel} | Objetivo: {obj} | Días/semana: {dias} | Duración: {dur}min | Limitaciones: {lim}
+  Género: {perfil.get('genero','mujer')} | Nivel: {nivel} | Objetivo: {obj} | Días/semana: {dias} | Duración: {dur}min | Limitaciones: {lim}
 
 ESTRUCTURA DE SESIÓN — {ej} EJERCICIOS POR DÍA (exacto):
   Posición 1: Compuesto dominante del objetivo (mayor activación EMG)
@@ -277,6 +412,7 @@ ESTRUCTURA DE SESIÓN — {ej} EJERCICIOS POR DÍA (exacto):
 
 {obj_nota}
 {lim_nota}
+{genero_nota}
 
 REGLAS ABSOLUTAS (cada violación invalida el plan):
 1. SOLO IDs exactos del CATALOGO. Sin inventar. Sin modificar.
@@ -367,6 +503,7 @@ def init_db():
         duracion_min INTEGER DEFAULT 60,
         momento TEXT DEFAULT 'tarde',
         semanas_sin_gym INTEGER DEFAULT 0,
+        genero TEXT DEFAULT 'mujer',
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )""")
 
@@ -388,6 +525,7 @@ def init_db():
         "ALTER TABLE perfil_usuario ADD COLUMN semanas_sin_gym INTEGER DEFAULT 0",
         "ALTER TABLE swaps ADD COLUMN grupo TEXT",
         "ALTER TABLE swaps ADD COLUMN rol TEXT",
+        "ALTER TABLE perfil_usuario ADD COLUMN genero TEXT DEFAULT 'mujer'",
     ]
     for sql in migraciones:
         try:
@@ -1182,15 +1320,40 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """, (user_id, objetivo))
         conn.commit()
         conn.close()
-        # Paso 2: nivel
+        # Paso 2: género — afecta split muscular y énfasis de ejercicios
+        teclado = InlineKeyboardMarkup([
+            [InlineKeyboardButton("👩 Mujer",  callback_data="gen:mujer")],
+            [InlineKeyboardButton("👨 Hombre", callback_data="gen:hombre")],
+        ])
+        await query.edit_message_text(
+            "✅ Objetivo guardado.\n\n<b>Paso 2/6</b> — ¿Cuál es tu género?\n"
+            "<i>Esto ajusta el énfasis muscular del programa.</i>",
+            reply_markup=teclado, parse_mode="HTML"
+        )
+        return
+
+    # ── SELECCIÓN DE GÉNERO ───────────────────────────────────────────
+    if data.startswith("gen:"):
+        await query.answer()
+        genero = data.split(":")[1]
+        conn_gen = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
+        cur_gen = conn_gen.cursor()
+        cur_gen.execute("""
+            INSERT INTO perfil_usuario (user_id, genero)
+            VALUES (?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET genero = excluded.genero, updated_at = CURRENT_TIMESTAMP
+        """, (user_id, genero))
+        conn_gen.commit()
+        conn_gen.close()
+        # Paso 3: nivel
         teclado = InlineKeyboardMarkup([
             [InlineKeyboardButton("🌱 Primera vez / menos de 3 meses", callback_data="niv:principiante")],
             [InlineKeyboardButton("💪 6 meses a 2 años con constancia", callback_data="niv:intermedio")],
             [InlineKeyboardButton("🔥 Más de 2 años entrenando",        callback_data="niv:avanzado")],
         ])
         await query.edit_message_text(
-            "✅ Objetivo guardado.\n\n<b>Paso 2/5</b> — ¿Cuánta experiencia tienes en el gym?\n"
-            "<i>Sé honesta, esto cambia completamente el programa.</i>",
+            "✅ Guardado.\n\n<b>Paso 3/6</b> — ¿Cuánta experiencia tienes en el gym?\n"
+            "<i>Sé honesto/a, esto cambia completamente el programa.</i>",
             reply_markup=teclado, parse_mode="HTML"
         )
         return
@@ -1216,7 +1379,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("💪 Hombro lesionado",        callback_data="lim:hombro")],
         ])
         await query.edit_message_text(
-            "✅ Nivel guardado.\n\n<b>Paso 3/5</b> — ¿Tienes alguna limitación física?\n"
+            "✅ Nivel guardado.\n\n<b>Paso 4/6</b> — ¿Tienes alguna limitación física?\n"
             "<i>Esto ajusta los ejercicios para que sean seguros para ti.</i>",
             reply_markup=teclado, parse_mode="HTML"
         )
@@ -1243,7 +1406,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🏋 90 min (tengo tiempo de sobra)",      callback_data="dur:90")],
         ])
         await query.edit_message_text(
-            "✅ Listo.\n\n<b>Paso 4/5</b> — ¿Cuánto tiempo tienes disponible por sesión?\n"
+            "✅ Listo.\n\n<b>Paso 5/6</b> — ¿Cuánto tiempo tienes disponible por sesión?\n"
             "<i>Esto define cuántos ejercicios incluir. Sé realista.</i>",
             reply_markup=teclado, parse_mode="HTML"
         )
@@ -1269,7 +1432,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("5 días a la semana", callback_data="dias:5")],
         ])
         await query.edit_message_text(
-            "✅ Tiempo registrado.\n\n<b>Paso 5/5</b> — ¿Cuántos días por semana puedes entrenar?\n"
+            "✅ Tiempo registrado.\n\n<b>Paso 6/6</b> — ¿Cuántos días por semana puedes entrenar?\n"
             "<i>Recuerda: consistencia > frecuencia. 3 días bien hechos > 5 a medias.</i>",
             reply_markup=teclado, parse_mode="HTML"
         )
@@ -1314,51 +1477,81 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         limitaciones = row2[1] if row2 else "ninguna"
         duracion_min = row2[2] if row2 else 60
 
+        # Cargar también género
+        conn3 = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
+        cur3  = conn3.cursor()
+        cur3.execute("SELECT genero FROM perfil_usuario WHERE user_id = ?", (user_id,))
+        row3 = cur3.fetchone()
+        conn3.close()
+        genero = row3[0] if row3 else "mujer"
+
         perfil = {"objetivo": objetivo, "dias": int(dias), "nivel": nivel,
-                  "limitaciones": limitaciones, "duracion_min": duracion_min}
+                  "limitaciones": limitaciones, "duracion_min": duracion_min, "genero": genero}
         system_prompt_dinamico = construir_system_prompt(perfil)
         prompt = construir_prompt_usuario(perfil)
-        MAX_INTENTOS = 3
-        exito = False
-        msj   = "Sin respuesta"
-        for intento in range(1, MAX_INTENTOS + 1):
-            try:
-                if intento > 1:
-                    await query.edit_message_text(
-                        f"🔄 <b>Reintentando... ({intento}/{MAX_INTENTOS})</b>",
-                        parse_mode="HTML"
-                    )
-                    await asyncio.sleep(2)
+        # Generar semana a semana — evita truncamiento por JSON gigante
+        client = genai.Client(api_key=os.environ.get('GEMINI_API_KEY'))
+        semanas_json = []
+        error_semana = None
 
-                client = genai.Client(api_key=os.environ.get('GEMINI_API_KEY'))
-                loop = asyncio.get_event_loop()
-                resp = await asyncio.wait_for(
-                    loop.run_in_executor(
-                        None,
-                        lambda p=prompt, sp=system_prompt_dinamico: client.models.generate_content(
-                            model='gemini-2.0-flash',
-                            contents=p,
-                            config=types.GenerateContentConfig(
-                                system_instruction=sp,
-                                max_output_tokens=6000,
-                                temperature=0.3,        # menos creatividad = JSON más limpio
+        for num_semana in range(1, 5):
+            progreso_txt = ["🧠", "📊", "🏗", "✍️"][num_semana - 1]
+            await query.edit_message_text(
+                f"{progreso_txt} <b>Generando semana {num_semana}/4...</b>",
+                parse_mode="HTML"
+            )
+
+            prompt_semana = construir_prompt_semana(perfil, num_semana)
+            exito_s = False
+            for intento in range(1, 3):
+                try:
+                    loop = asyncio.get_event_loop()
+                    resp = await asyncio.wait_for(
+                        loop.run_in_executor(
+                            None,
+                            lambda p=prompt_semana, sp=system_prompt_dinamico: client.models.generate_content(
+                                model='gemini-2.0-flash',
+                                contents=p,
+                                config=types.GenerateContentConfig(
+                                    system_instruction=sp,
+                                    max_output_tokens=3000,
+                                    temperature=0.2,
+                                )
                             )
-                        )
-                    ),
-                    timeout=90
-                )
-                exito, msj = sanitizar_e_insertar_plan(resp.text, user_id, ej_por_dia=duracion_min // 15)
-                if exito:
-                    break
-                logger.warning(f"Intento {intento} falló validación: {msj}")
+                        ),
+                        timeout=45
+                    )
+                    sem_data, err = parsear_semana_json(resp.text, num_semana)
+                    if sem_data:
+                        semanas_json.append(sem_data)
+                        exito_s = True
+                        break
+                    logger.warning(f"Semana {num_semana} intento {intento}: {err}")
+                except asyncio.TimeoutError:
+                    logger.error(f"Timeout semana {num_semana} intento {intento}")
+                except Exception as exc:
+                    logger.exception(f"Error semana {num_semana} intento {intento}")
 
-            except asyncio.TimeoutError:
-                msj = "Gemini tardó demasiado (>45s)"
-                logger.error(f"Timeout Gemini intento {intento}")
-            except Exception as exc:
-                msj = str(exc)
-                logger.exception(f"Error Gemini intento {intento}")
+            if not exito_s:
+                error_semana = num_semana
+                break
 
+        if error_semana:
+            await query.edit_message_text(
+                f"❌ <b>Error en semana {error_semana}.</b> Toca el menú para reintentar.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🆕 Intentar de nuevo", callback_data="menu:nuevo")
+                ]]),
+                parse_mode="HTML"
+            )
+            return
+
+        # Ensamblar plan completo e insertar en DB
+        plan_completo = {"semanas": semanas_json}
+        ej_calculado = 3 if duracion_min<=45 else (4 if duracion_min<=60 else (5 if duracion_min<=75 else 6))
+        exito, msj = sanitizar_e_insertar_plan(
+            json.dumps(plan_completo), user_id, ej_por_dia=ej_calculado
+        )
         if exito:
             iniciar_estado_usuario(user_id)
             await query.edit_message_text(
@@ -1370,9 +1563,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         else:
             await query.edit_message_text(
-                f"❌ <b>No se pudo generar el plan.</b>\n"
-                f"<i>Error: {msj}</i>\n\n"
-                "Toca el menú para intentarlo de nuevo.",
+                f"❌ <b>No se pudo guardar el plan:</b> {msj}\nIntenta de nuevo.",
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton("🆕 Intentar de nuevo", callback_data="menu:nuevo")
                 ]]),
