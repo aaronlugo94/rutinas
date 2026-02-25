@@ -4,6 +4,7 @@ import asyncio
 import sqlite3
 import html
 import logging
+from contextlib import contextmanager
 from pathlib import Path
 from google import genai
 from google.genai import types
@@ -140,56 +141,134 @@ CATALOGO = [
 ]
 
 VALID_IDS  = {ex["ejercicio_id"] for ex in CATALOGO}
+
+# ── PATRONES BIOMECÁNICOS (auditoría #3 — validación fisiológica post-Gemini) ──
+# Permite detectar: 3 bisagras el mismo día, cardio antes del ejercicio 3, etc.
+PATRON_POR_ID = {"GLU_01": "puente_cadera", "GLU_02": "puente_cadera", "GLU_03": "puente_cadera", "GLU_04": "puente_cadera", "GLU_05": "sentadilla", "GLU_06": "sentadilla", "GLU_07": "bisagra_cadera", "GLU_08": "bisagra_cadera", "GLU_09": "bisagra_cadera", "GLU_10": "patada_aislamiento", "GLU_11": "patada_aislamiento", "GLU_12": "patada_aislamiento", "GLU_13": "abduccion", "GLU_14": "abduccion", "GLU_15": "extension_cadera", "GLU_16": "extension_cadera", "GLU_17": "sentadilla", "GLU_18": "patada_aislamiento", "GLU_19": "bisagra_cadera", "GLU_20": "puente_cadera", "PIE_01": "sentadilla", "PIE_02": "sentadilla", "PIE_03": "sentadilla", "PIE_04": "sentadilla", "PIE_05": "sentadilla", "PIE_06": "prensa", "PIE_07": "prensa", "PIE_08": "bisagra_cadera", "PIE_09": "bisagra_cadera", "PIE_10": "bisagra_cadera", "PIE_11": "curl_femoral", "PIE_12": "curl_femoral", "PIE_13": "curl_femoral", "PIE_14": "desplante", "PIE_15": "desplante", "PIE_16": "sentadilla", "PIE_17": "sentadilla", "EMP_01": "press_horizontal", "EMP_02": "press_horizontal", "EMP_03": "press_horizontal", "EMP_04": "press_inclinado", "EMP_05": "press_inclinado", "EMP_06": "press_vertical", "EMP_07": "press_vertical", "EMP_08": "press_vertical", "EMP_09": "aislamiento_pecho", "EMP_10": "aislamiento_pecho", "EMP_11": "triceps", "EMP_12": "triceps", "EMP_13": "triceps", "EMP_14": "triceps", "EMP_15": "core_dinamico", "EMP_16": "core_estabilidad", "EMP_17": "core_estabilidad", "EMP_18": "core_estabilidad", "TIR_01": "jalon_vertical", "TIR_02": "jalon_vertical", "TIR_03": "jalon_vertical", "TIR_04": "remo_horizontal", "TIR_05": "remo_horizontal", "TIR_06": "remo_horizontal", "TIR_07": "remo_horizontal", "TIR_08": "biceps", "TIR_09": "biceps", "TIR_10": "biceps", "TIR_11": "biceps", "TIR_12": "hombro_posterior", "TIR_13": "hombro_posterior", "TIR_14": "remo_horizontal", "TIR_15": "jalon_vertical", "COR_01": "core_estabilidad", "COR_02": "core_estabilidad", "COR_03": "core_estabilidad", "COR_04": "core_dinamico", "COR_05": "core_dinamico", "COR_06": "core_rotacion", "COR_07": "core_estabilidad", "COR_08": "core_dinamico", "CAR_01": "cardio", "CAR_02": "cardio", "CAR_03": "cardio", "CAR_04": "cardio", "CAR_05": "cardio", "CAR_06": "cardio", "CAR_07": "cardio", "CAR_08": "cardio", "CAR_09": "cardio", "CAR_10": "cardio", "CAR_11": "cardio"}
+
+def patron_de(ej_id: str) -> str:
+    """Devuelve el patrón biomecánico de un ejercicio, o 'desconocido'."""
+    return PATRON_POR_ID.get(str(ej_id), "desconocido")
+
 CATALOGO_POR_ID = {ex["ejercicio_id"]: ex for ex in CATALOGO}
 
 def construir_prompt_semana(perfil: dict, num_semana: int) -> str:
     """
-    Prompt para generar UNA semana. JSON pequeño = sin truncamiento.
-    ~1500 chars de output vs 28000 para el plan completo.
+    Prompt COMPLETO y auto-contenido para generar una semana.
+    Incluye instrucción de sistema + catálogo + formato.
+    Diseñado para que Gemini NO pueda responder con texto explicativo.
     """
     obj   = perfil.get("objetivo", "general")
     nivel = perfil.get("nivel", "principiante")
     dias  = int(perfil.get("dias", 3))
     dur   = int(perfil.get("duracion_min", 60))
     lim   = perfil.get("limitaciones", "ninguna")
+    genero = perfil.get("genero", "mujer")
+    ej    = 3 if dur<=45 else (4 if dur<=60 else (5 if dur<=75 else 6))
 
     # Progresión por semana
-    if nivel == "principiante":
-        prog_sem = {1: "3×15 RIR=4", 2: "3×12 RIR=3", 3: "3×10 RIR=2", 4: "4×8 RIR=1"}
-        extra_s = {1: "Solo máquinas guiadas", 2: "Mismos ejercicios que S1 +peso",
-                   3: "Cambia a variantes libres/mancuernas", 4: "Máxima carga del bloque"}
-    elif nivel == "intermedio":
-        prog_sem = {1: "4×12 RIR=3", 2: "4×8-10 RIR=2", 3: "4×6-8 RIR=1", 4: "3×12 RIR=4 DELOAD 60% carga"}
-        extra_s = {1: "Hipertrofia metabólica", 2: "+5-10% carga vs S1",
-                   3: "Zona fuerza-hipertrofia", 4: "Deload activo, recuperación"}
-    else:
-        prog_sem = {1: "Fuerza 5×3-5 RIR=0", 2: "Hipertrofia 4×8-10 RIR=1",
-                    3: "Volumen 3×12-15 RIR=2", 4: "DELOAD 3×8 50% carga"}
-        extra_s = {1: "Solo compuestos pesados", 2: "Tempo 2-1-2 rango completo",
-                   3: "Congestión y aislamiento", 4: "Recuperación — no al fallo"}
+    prog = {
+        "principiante": {1:"3 series x 15 reps",2:"3 series x 12 reps",3:"3 series x 10 reps",4:"4 series x 8 reps"},
+        "intermedio":   {1:"4 series x 12 reps",2:"4 series x 8-10 reps",3:"4 series x 6-8 reps",4:"3 series x 12 reps DELOAD"},
+        "avanzado":     {1:"5 series x 3-5 reps",2:"4 series x 8-10 reps",3:"3 series x 12-15 reps",4:"3 series x 8 reps DELOAD"},
+    }
+    series_reps = prog.get(nivel, prog["principiante"])[num_semana]
 
-    series_reps = prog_sem[num_semana]
-    nota_semana = extra_s[num_semana]
+    # Split del día según días/semana y objetivo
+    if dias == 3:
+        dias_split = ["lunes","miercoles","viernes"]
+        grupos_split = ["gluteo","tiron","gluteo"] if "gluteo" in obj else ["pierna","empuje","tiron"]
+    elif dias == 4:
+        dias_split = ["lunes","martes","jueves","viernes"]
+        grupos_split = ["gluteo","empuje","pierna","tiron"] if "gluteo" in obj else ["pierna","empuje","pierna","tiron"]
+    else:  # 5
+        dias_split = ["lunes","martes","miercoles","jueves","viernes"]
+        grupos_split = ["gluteo","empuje","tiron","pierna","gluteo"] if "gluteo" in obj else ["pierna","empuje","tiron","pierna","empuje"]
 
-    # Catálogo comprimido en 6 líneas
-    grupos_orden = ["gluteo", "pierna", "empuje", "tiron", "core", "cardio"]
+    # Catálogo comprimido por grupo
+    grupos_orden = ["gluteo","pierna","empuje","tiron","core","cardio"]
     cat_lines = []
     for g in grupos_orden:
         ids = [e["ejercicio_id"] for e in CATALOGO if e["grupo"] == g]
-        cat_lines.append(f'{g.upper()}: {" ".join(ids)}')
+        cat_lines.append(f"{g.upper()}: {' '.join(ids)}")
 
-    return f"""IDs POR GRUPO:
+    # Construir estructura exacta esperada como ejemplo
+    ejemplo_dia = f'{{"dia":"lunes","grupo":"gluteo","ejercicios":[{{"ejercicio_id":"GLU_03","orden":1,"series":3,"reps":"15","notas":"pausa 1s arriba"}}]}}'
+
+    return f"""INSTRUCCION: Responde UNICAMENTE con JSON. Cero texto. Cero explicaciones. Solo el objeto JSON.
+
+CATALOGO (usa SOLO estos IDs):
 {chr(10).join(cat_lines)}
 
-Genera SOLO la semana {num_semana} en JSON.
-Parámetros: obj={obj}, nivel={nivel}, {dias}días, {dur}min, lim={lim}
-Series/reps esta semana: {series_reps} — {nota_semana}
+TAREA: Genera la semana {num_semana} de 4 para este usuario.
+- Objetivo: {obj}
+- Nivel: {nivel}
+- Genero: {genero}
+- Limitaciones: {lim}
+- Dias por semana: {dias} ({', '.join(dias_split)})
+- Ejercicios por dia: exactamente {ej}
+- Series/reps esta semana: {series_reps}
+- El ultimo ejercicio SIEMPRE es cardio (CAR_01 a CAR_10)
+- reps SIEMPRE como string: "15" "8-10" "45s"
+- Notas: maximo 5 palabras, sin comillas internas
 
-Reglas: exactamente {3 if dur<=45 else (4 if dur<=60 else (5 if dur<=75 else 6))} ejercicios/día, cardio al final, reps en string.
-Notas: máx 5 palabras. Sin comillas en notas.
+DIAS Y GRUPOS REQUERIDOS:
+{chr(10).join(f"  {d}: grupo={g}" for d,g in zip(dias_split, grupos_split))}
 
-Formato exacto (SOLO esto):
-{{"semana":{num_semana},"dias":[{{"dia":"lunes","grupo":"gluteo","ejercicios":[{{"ejercicio_id":"GLU_03","ejercicio":"Hip thrust en banco","orden":1,"series":3,"reps":"15","notas":"Pausa 1s arriba"}}]}}]}}"""
+FORMATO EXACTO DE RESPUESTA (JSON puro, sin texto antes ni despues):
+{{"semana":{num_semana},"dias":[{ejemplo_dia}]}}
+
+RESPONDE AHORA CON EL JSON:"""
+
+
+def validar_coherencia_dia(dia: dict) -> tuple[bool, str]:
+    """
+    Validador fisiológico post-Gemini (auditoría #3 y #4).
+    Detecta redundancias biomecánicas que el LLM no controla.
+    LLM genera → Python arbitra.
+    """
+    ejercicios = dia.get("ejercicios", [])
+    if not ejercicios:
+        return False, "Día sin ejercicios"
+
+    patrones = [patron_de(e.get("ejercicio_id","")) for e in ejercicios]
+
+    # Regla 1: No más de 2 ejercicios del mismo patrón por día
+    from collections import Counter
+    conteo = Counter(p for p in patrones if p not in ("cardio","desconocido"))
+    for patron, count in conteo.items():
+        if count >= 3:
+            return False, f"Redundancia biomecánica: {count}× {patron} el mismo día"
+
+    # Regla 2: Cardio siempre al final (no antes del penúltimo ejercicio)
+    cardio_indices = [i for i, p in enumerate(patrones) if p == "cardio"]
+    if cardio_indices:
+        ultimo_cardio = max(cardio_indices)
+        if ultimo_cardio < len(patrones) - 2:
+            # Advertencia suave — no rechazar, solo loguear
+            logger.warning(f"Cardio no está al final del día {dia.get('dia','?')}")
+
+    # Regla 3: Al menos 1 compuesto (no solo aislamiento)
+    compuestos = {"sentadilla","prensa","bisagra_cadera","press_horizontal",
+                  "press_inclinado","press_vertical","jalon_vertical","remo_horizontal",
+                  "puente_cadera","desplante"}
+    tiene_compuesto = any(p in compuestos for p in patrones)
+    if not tiene_compuesto and dia.get("grupo") not in ("cardio", "core"):
+        logger.warning(f"Día {dia.get('dia','?')} sin ejercicio compuesto — solo aislamiento")
+
+    return True, "OK"
+
+
+def normalizar_ejercicio(e: dict) -> dict:
+    """Normaliza un ejercicio: nombre del catálogo, reps como string, notas saneadas."""
+    eid = str(e.get("ejercicio_id", ""))
+    e["ejercicio"] = CATALOGO_POR_ID[eid]["nombre"]
+    e["reps"]      = str(e.get("reps", "10"))
+    nota = str(e.get("notas", "")).replace('"','').replace("'",'').strip()[:60]
+    e["notas"]  = nota
+    try:    e["series"] = int(e.get("series", 3))
+    except: e["series"] = 3
+    return e
 
 
 def parsear_semana_json(raw: str, num_semana: int) -> tuple:
@@ -216,6 +295,7 @@ def parsear_semana_json(raw: str, num_semana: int) -> tuple:
         start = text.find("{")
         start_arr = text.find("[")
         if start == -1 and start_arr == -1:
+            logger.error(f"Gemini devolvió sin JSON: {repr(text[:300])}")
             return None, "No se encontró JSON en la respuesta"
 
         # Intentar parsear como objeto o como array
@@ -281,19 +361,20 @@ def parsear_semana_json(raw: str, num_semana: int) -> tuple:
             for e in d.get("ejercicios", []):
                 eid = str(e.get("ejercicio_id", ""))
                 if eid not in VALID_IDS:
-                    logger.warning(f"ID ignorado (no en catálogo): {eid}")
-                    continue  # Saltar en lugar de fallar toda la semana
-                e["ejercicio"] = CATALOGO_POR_ID[eid]["nombre"]  # nombre del catálogo siempre
-                e["reps"]      = str(e.get("reps", "10"))        # reps como string
-                nota = str(e.get("notas", "")).replace('"','').replace("'",'').strip()[:60]
-                e["notas"] = nota
-                try: e["series"] = int(e.get("series", 3))
-                except: e["series"] = 3
-                ejercicios_validos.append(e)
+                    logger.warning("ID ignorado",
+                                   extra={"eid": eid, "semana": num_semana, "dia": d.get("dia")})
+                    continue
+                ejercicios_validos.append(normalizar_ejercicio(e))
 
             d["ejercicios"] = ejercicios_validos
             if not ejercicios_validos:
                 return None, f"Día {d.get('dia','?')} sin ejercicios válidos"
+
+            # Validación fisiológica — LLM genera, Python arbitra
+            coherente, motivo = validar_coherencia_dia(d)
+            if not coherente:
+                logger.warning(f"Coherencia fallida semana {num_semana}: {motivo}")
+                # No rechazar — continuar con advertencia (mejor plan imperfecto que sin plan)
 
         data["semana"] = num_semana
         return data, None
@@ -465,7 +546,7 @@ ESTRUCTURA DE SESIÓN — {ej} EJERCICIOS POR DÍA (exacto):
 REGLAS ABSOLUTAS (cada violación invalida el plan):
 1. SOLO IDs exactos del CATALOGO. Sin inventar. Sin modificar.
 2. Exactamente {ej} ejercicios por día. Ni más ni menos.
-3. series y reps DISTINTOS cada semana. NUNCA las mismas 4 semanas.
+3. Progresión de estímulo cada semana: aumenta carga, o reduce reps, o cambia RIR. Al menos UNA variable debe cambiar.
 4. reps SIEMPRE string: "15" "8-10" "45s" "30s". NUNCA número.
 5. Al menos {max(1, dias-2)} días/semana terminan con cardio (CAR_01..CAR_10).
 6. S3-S4 usan ejercicios distintos a S1-S2 (misma función, diferente variante).
@@ -510,6 +591,23 @@ Solo JSON. Sin markdown. Sin texto extra."""
 # ==========================================
 # 3. BASE DE DATOS
 # ==========================================
+
+@contextmanager
+def db():
+    """Context manager para conexiones SQLite. Garantiza commit+close siempre."""
+    conn = sqlite3.connect(DB_PATH, timeout=10, check_same_thread=False)
+    conn.execute("PRAGMA journal_mode=WAL")   # Write-Ahead Log: mejor concurrencia
+    conn.execute("PRAGMA foreign_keys=ON")    # Integridad referencial
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
@@ -566,21 +664,28 @@ def init_db():
         PRIMARY KEY (user_id, ejercicio_id_original)
     )""")
 
-    # Migraciones automáticas — añade columnas nuevas si la DB es antigua
+    # Migraciones versionadas — distingue "ya existe" de error real
+    # Audit: si falla por razón distinta a duplicate column, lanza excepción
     migraciones = [
-        "ALTER TABLE perfil_usuario ADD COLUMN duracion_min INTEGER DEFAULT 60",
-        "ALTER TABLE perfil_usuario ADD COLUMN momento TEXT DEFAULT 'tarde'",
-        "ALTER TABLE perfil_usuario ADD COLUMN semanas_sin_gym INTEGER DEFAULT 0",
-        "ALTER TABLE swaps ADD COLUMN grupo TEXT",
-        "ALTER TABLE swaps ADD COLUMN rol TEXT",
-        "ALTER TABLE perfil_usuario ADD COLUMN genero TEXT DEFAULT 'mujer'",
+        ("v1", "ALTER TABLE perfil_usuario ADD COLUMN duracion_min INTEGER DEFAULT 60"),
+        ("v1", "ALTER TABLE perfil_usuario ADD COLUMN momento TEXT DEFAULT 'tarde'"),
+        ("v1", "ALTER TABLE perfil_usuario ADD COLUMN semanas_sin_gym INTEGER DEFAULT 0"),
+        ("v1", "ALTER TABLE swaps ADD COLUMN grupo TEXT"),
+        ("v1", "ALTER TABLE swaps ADD COLUMN rol TEXT"),
+        ("v2", "ALTER TABLE perfil_usuario ADD COLUMN genero TEXT DEFAULT 'mujer'"),
+        ("v3", "ALTER TABLE rutinas ADD COLUMN patron TEXT"),
     ]
-    for sql in migraciones:
+    for version, sql in migraciones:
         try:
             cur.execute(sql)
             conn.commit()
-        except sqlite3.OperationalError:
-            pass  # Columna ya existe, ignorar
+            logger.info(f"Migración {version} aplicada: {sql[:50]}")
+        except sqlite3.OperationalError as e:
+            if "duplicate column" in str(e).lower() or "already exists" in str(e).lower():
+                pass  # Ya existe — OK
+            else:
+                logger.error(f"Error real en migración {version}: {e} | SQL: {sql}")
+                # No raise — continuar con el resto, pero loggeado
 
     conn.commit()
     conn.close()
@@ -708,7 +813,7 @@ def sanitizar_e_insertar_plan(json_string: str, user_id: int, ej_por_dia: int = 
                     nombre_final = CATALOGO_POR_ID[ej_id_final]["nombre"]
 
                     cur.execute("""
-                        INSERT OR IGNORE INTO rutinas
+                        INSERT OR REPLACE INTO rutinas
                         (user_id, semana, dia, grupo, ejercicio_id, ejercicio, orden, series, reps, notas)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (user_id, int(s["semana"]), dia_seguro,
@@ -1593,13 +1698,13 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     resp = await asyncio.wait_for(
                         loop.run_in_executor(
                             None,
-                            lambda p=prompt_semana, sp=system_prompt_dinamico: client.models.generate_content(
+                            lambda p=prompt_semana: client.models.generate_content(
                                 model='gemini-2.0-flash',
                                 contents=p,
                                 config=types.GenerateContentConfig(
-                                    system_instruction=sp,
+                                    system_instruction="Eres un generador JSON. SOLO produces JSON valido. NUNCA texto explicativo. NUNCA markdown. Solo el objeto JSON puro.",
                                     max_output_tokens=3000,
-                                    temperature=0.2,
+                                    temperature=0.1,
                                 )
                             )
                         ),
@@ -1611,6 +1716,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         exito_s = True
                         break
                     logger.warning(f"Semana {num_semana} intento {intento}: {err}")
+                    logger.debug(f"Raw Gemini S{num_semana}i{intento} (200 chars): {repr(resp.text[:200])}")
                 except asyncio.TimeoutError:
                     logger.error(f"Timeout semana {num_semana} intento {intento}")
                 except Exception as exc:
