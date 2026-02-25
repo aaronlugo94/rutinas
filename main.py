@@ -341,6 +341,19 @@ def init_db():
         PRIMARY KEY (user_id, ejercicio_id_original)
     )""")
 
+    # Migraciones automáticas — añade columnas nuevas si la DB es antigua
+    migraciones = [
+        "ALTER TABLE perfil_usuario ADD COLUMN duracion_min INTEGER DEFAULT 60",
+        "ALTER TABLE perfil_usuario ADD COLUMN momento TEXT DEFAULT 'tarde'",
+        "ALTER TABLE perfil_usuario ADD COLUMN semanas_sin_gym INTEGER DEFAULT 0",
+    ]
+    for sql in migraciones:
+        try:
+            cur.execute(sql)
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # Columna ya existe, ignorar
+
     conn.commit()
     conn.close()
 
@@ -665,6 +678,21 @@ async def check_auth(update: Update) -> bool:
         return False
     return True
 
+MENU_PRINCIPAL = InlineKeyboardMarkup([
+    [InlineKeyboardButton("🏋️ Ver rutina de hoy",    callback_data="menu:hoy")],
+    [InlineKeyboardButton("📅 Ver plan completo",     callback_data="menu:plan")],
+    [InlineKeyboardButton("🆕 Crear nuevo plan",      callback_data="menu:nuevo")],
+    [InlineKeyboardButton("🔄 Resetear preferencias", callback_data="menu:swaps")],
+])
+
+async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /menu — todos los botones sin escribir comandos."""
+    if not await check_auth(update): return
+    await update.message.reply_text(
+        "🏠 <b>¿Qué quieres hacer?</b>",
+        reply_markup=MENU_PRINCIPAL, parse_mode="HTML"
+    )
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_auth(update): return
     user_id = update.effective_user.id
@@ -785,6 +813,70 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
     user_id = query.from_user.id
+
+    # ── MENÚ PRINCIPAL ────────────────────────────────────────────────
+    if data.startswith("menu:"):
+        accion = data.split(":")[1]
+        await query.answer()
+
+        if accion == "hoy":
+            semana, dia = obtener_estado_usuario(user_id)
+            stats = obtener_stats_suaves(user_id)
+            bloque = (f"💚 Ejercicios totales: {stats['total_ejercicios']} · "
+                      f"Rutinas: {stats['rutinas_completas']}\n\n")
+            texto_rutina, teclado_rutina = obtener_rutina_interactiva(user_id, semana, dia)
+            await query.edit_message_text(
+                bloque + texto_rutina, reply_markup=teclado_rutina,
+                parse_mode="HTML", disable_web_page_preview=True
+            )
+
+        elif accion == "plan":
+            paginas = formatear_plan_por_semanas(user_id)
+            if not paginas:
+                await query.edit_message_text("No tienes un plan activo. Usa el menú para crear uno.")
+                return
+            await query.edit_message_text(paginas[0], parse_mode="HTML")
+            for pagina in paginas[1:]:
+                await context.bot.send_message(chat_id=query.message.chat_id, text=pagina, parse_mode="HTML")
+            tec = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menú", callback_data="menu_volver")]])
+            await context.bot.send_message(chat_id=query.message.chat_id, text="👆 Plan completo", reply_markup=tec)
+
+        elif accion == "nuevo":
+            # Borra plan actual y reinicia onboarding
+            conn = sqlite3.connect(DB_PATH)
+            cur = conn.cursor()
+            cur.execute("DELETE FROM rutinas    WHERE user_id = ?", (user_id,))
+            cur.execute("DELETE FROM progreso   WHERE user_id = ?", (user_id,))
+            cur.execute("DELETE FROM milestones WHERE user_id = ?", (user_id,))
+            cur.execute("DELETE FROM estado     WHERE user_id = ?", (user_id,))
+            conn.commit()
+            conn.close()
+            teclado = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🍑 Aumentar glúteo y pierna", callback_data="obj:gluteos")],
+                [InlineKeyboardButton("🔥 Perder peso y sudar",      callback_data="obj:peso")],
+                [InlineKeyboardButton("💪 Tonificar todo el cuerpo", callback_data="obj:general")]
+            ])
+            await query.edit_message_text(
+                "🆕 Plan anterior borrado.\n\n<b>Paso 1/5</b> — ¿Cuál es tu objetivo principal?",
+                reply_markup=teclado, parse_mode="HTML"
+            )
+
+        elif accion == "swaps":
+            conn = sqlite3.connect(DB_PATH)
+            cur = conn.cursor()
+            cur.execute("DELETE FROM swaps WHERE user_id = ?", (user_id,))
+            conn.commit()
+            conn.close()
+            await query.edit_message_text(
+                "🔁 Preferencias de ejercicios reseteadas.\nEl próximo plan usará el catálogo original.",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menú", callback_data="menu_volver")]])
+            )
+        return
+
+    if data == "menu_volver":
+        await query.answer()
+        await query.edit_message_text("🏠 <b>¿Qué quieres hacer?</b>", reply_markup=MENU_PRINCIPAL, parse_mode="HTML")
+        return
 
     # ── SELECCIÓN DE OBJETIVO ─────────────────────────────────────────
     if data.startswith("obj:"):
@@ -1098,6 +1190,7 @@ def main():
             pass
 
     app.add_handler(CommandHandler("start",        start))
+    app.add_handler(CommandHandler("menu",         menu_handler))
     app.add_handler(CommandHandler("plan",         plan_handler))
     app.add_handler(CommandHandler("reset_plan",   reset_plan_handler))
     app.add_handler(CommandHandler("reset_swaps",  reset_swaps_handler))
