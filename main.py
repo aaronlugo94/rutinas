@@ -285,7 +285,7 @@ REGLAS ABSOLUTAS (cada violación invalida el plan):
 4. reps SIEMPRE string: "15" "8-10" "45s" "30s". NUNCA número.
 5. Al menos {max(1, dias-2)} días/semana terminan con cardio (CAR_01..CAR_10).
 6. S3-S4 usan ejercicios distintos a S1-S2 (misma función, diferente variante).
-7. Notas: coaching técnico específico y útil. Mínimo 50% de ejercicios con nota.
+7. Notas: máx 6 palabras por nota. Solo en ejercicios principales. Sé ultra-conciso.
 8. Días de la semana DISTINTOS. Mismo grupo muscular: mínimo 48h entre sesiones.
 9. JSON PURO. Sin markdown. Sin explicaciones. Sin campo url.
 
@@ -294,29 +294,32 @@ FORMATO (solo JSON, nada más):
 
 
 def construir_prompt_usuario(perfil: dict) -> str:
-    """Catálogo comprimido — va en el mensaje del usuario para reducir tokens del system prompt."""
+    """
+    Prompt de usuario con catálogo ultra-comprimido.
+    Objetivo: minimizar tokens de entrada para que Gemini tenga más espacio de salida.
+    """
     obj   = perfil.get("objetivo", "general")
     nivel = perfil.get("nivel", "principiante")
     dias  = int(perfil.get("dias", 3))
     dur   = int(perfil.get("duracion_min", 60))
     lim   = perfil.get("limitaciones", "ninguna")
 
-    # Catálogo organizado por grupo para que Gemini entienda la estructura
+    # Solo IDs por grupo — nombre lo pone el validador desde CATALOGO_POR_ID
+    # Esto reduce ~60% los tokens del catálogo
     grupos_orden = ["gluteo", "pierna", "empuje", "tiron", "core", "cardio"]
     lineas = []
     for g in grupos_orden:
-        ejercicios_g = [e for e in CATALOGO if e["grupo"] == g]
-        lineas.append(f"\n## {g.upper()}")
-        for e in ejercicios_g:
-            lineas.append(f'  {e["ejercicio_id"]}|{e["nombre"]}|{e.get("rol","?")}')
+        ids = [e["ejercicio_id"] for e in CATALOGO if e["grupo"] == g]
+        lineas.append(f'{g.upper()}: {" ".join(ids)}')
 
-    return f"""CATALOGO DISPONIBLE (formato: ID|nombre|rol):
-{"".join(lineas)}
+    return f"""IDs DISPONIBLES POR GRUPO:
+{chr(10).join(lineas)}
 
-INSTRUCCIÓN: Genera el plan de entrenamiento de 4 semanas completo en JSON.
-Parámetros: objetivo={obj}, nivel={nivel}, {dias}días/semana, {dur}min/sesión, limitaciones={lim}.
-Aplica el split muscular, la progresión y el protocolo del system prompt.
-Responde ÚNICAMENTE con el JSON. Sin texto antes ni después."""
+REGLA CRÍTICA: Usa SOLO estos IDs. El campo "ejercicio" debe ser el nombre real del ejercicio.
+Notas: máximo 5 palabras por nota. No uses comillas dentro de las notas.
+
+Genera plan JSON 4 semanas: obj={obj}, nivel={nivel}, {dias}días/sem, {dur}min, lim={lim}.
+Solo JSON. Sin markdown. Sin texto extra."""
 
 
 
@@ -456,9 +459,15 @@ def validar_plan_json(data: dict, ej_por_dia: int) -> tuple[bool, str]:
                 ej_id = str(e.get("ejercicio_id", ""))
                 if ej_id not in VALID_IDS:
                     return False, f"ID inválido S{sem_num}/{dia_nombre}: '{ej_id}'"
+                # Nombre siempre del catálogo (source of truth, ignora lo que escriba Gemini)
+                e["ejercicio"] = CATALOGO_POR_ID[ej_id]["nombre"]
                 # reps debe ser string
                 if not isinstance(e.get("reps", ""), str):
                     e["reps"] = str(e.get("reps", "10"))
+                # Sanear notas: quitar comillas y truncar a 80 chars
+                nota = str(e.get("notas", ""))
+                nota = nota.replace('"', '').replace("'", '').strip()[:80]
+                e["notas"] = nota
                 # series debe ser int
                 if not isinstance(e.get("series", 3), int):
                     try:
@@ -723,57 +732,94 @@ def procesar_milestones(user_id: int, semana_actual: int) -> list[str]:
 # ==========================================
 # 6. UI Y RENDERER
 # ==========================================
-# ── CALENTAMIENTOS POR GRUPO MUSCULAR (basado en activación neuromuscular previa) ──
-# Fuente: McGill 2010, Contreras 2015 — activación glúteo pre-sesión reduce dominancia de cuádriceps
+# ── CALENTAMIENTOS CIENTÍFICOS POR GRUPO MUSCULAR ────────────────────────────
+# Fuentes: McGill (2010) estabilización, Contreras (2015) pre-activación glúteo,
+#          Cressey (2012) movilidad escapular, Cook (2010) patron motor previo
 CALENTAMIENTO_POR_GRUPO = {
     "gluteo": [
-        ("🔥 Clamshell con banda",           "2×15 c/lado", "Activa glúteo medio antes de cargar"),
-        ("🔥 Puente de glúteo sin carga",     "2×20",        "Activación neuromuscular, pausa 1s"),
-        ("🔥 Movilidad de cadera (rotación)", "2×10 c/lado", "Círculos lentos, rango completo"),
+        ("🔥 Clamshell con banda",              "2×15 c/lado", "Activa glúteo medio — reduce dominancia cuádriceps"),
+        ("🔥 Puente de glúteo sin carga",       "2×20",        "Pre-activa conexión mente-músculo. Pausa 1s arriba"),
+        ("🔥 Movilidad de cadera en cuadrupedia","2×10 c/lado", "Círculos amplios — lubrica articulación coxofemoral"),
     ],
     "pierna": [
-        ("🔥 Sentadilla goblet con peso leve","2×15",        "Activa cuádrices e isquios"),
-        ("🔥 Movilidad de cadera dinámica",   "2×10 c/lado", "Paso lateral con banda o libre"),
-        ("🔥 Elevación de talones",           "2×15",        "Activa gemelos y tobillos"),
+        ("🔥 Sentadilla goblet con peso leve",  "2×12",        "Activa cadena posterior completa. Espalda neutra"),
+        ("🔥 Peso muerto rumano sin peso",       "2×12",        "Patrón bisagra — activa isquios y glúteo"),
+        ("🔥 Movilidad tobillo (rotación)",      "2×10 c/lado", "Tobillo limita profundidad de sentadilla"),
     ],
     "empuje": [
-        ("🔥 Rotación de hombros con banda",  "2×15 c/dir",  "Moviliza manguito rotador"),
-        ("🔥 Flexiones en rodillas",          "2×10",        "Activa pectoral y tríceps"),
-        ("🔥 Círculos de brazo",              "2×10 c/dir",  "Movilidad escapular"),
+        ("🔥 Apertura de pecho con banda",      "2×15",        "Moviliza articulación glenohumeral — previene impingement"),
+        ("🔥 Rotación externa hombro con banda","2×12 c/lado", "Activa manguito rotador — protege hombro bajo carga"),
+        ("🔥 Flexiones lentas en rodillas",     "2×8",         "Patrón motor del press. Escápulas en retracción"),
     ],
     "tiron": [
-        ("🔥 Face pull con banda ligera",     "2×15",        "Activa manguito y romboides"),
-        ("🔥 Superman en suelo",              "2×12",        "Activa espalda baja y media"),
-        ("🔥 Jalón con banda en pie",         "2×12",        "Pre-activación dorsal"),
+        ("🔥 Retracción escapular con banda",   "2×15",        "Activa romboides y trapecio medio — base del tirón"),
+        ("🔥 Rotación torácica en suelo",       "2×10 c/lado", "Movilidad torácica — permite tirón sin compensar lumbar"),
+        ("🔥 Jalón con banda amplio en pie",    "2×12",        "Pre-activa dorsal ancho. Codos hacia bolsillos"),
     ],
     "core": [
-        ("🔥 Bird dog",                       "2×10 c/lado", "Estabilización lumbo-pélvica"),
-        ("🔥 Dead bug lento",                 "2×8 c/lado",  "Activación transverso"),
-        ("🔥 Plancha 20s",                    "2×20s",       "Core antiextensión"),
+        ("🔥 Dead bug lento",                   "2×8 c/lado",  "Activa transverso abdominal — estabilizador profundo"),
+        ("🔥 Bird dog",                         "2×10 c/lado", "Coordinación lumbo-pélvica. Columna neutra"),
+        ("🔥 Respiración diafragmática",        "2×5 resp",    "Presión intraabdominal — McGill 2010"),
     ],
     "cardio": [
-        ("🔥 Jumping jacks",                  "2×30s",       "Eleva FC progresivamente"),
-        ("🔥 Trote suave en sitio",           "2×30s",       "Calienta articulaciones"),
-        ("🔥 Movilidad dinámica general",     "1×60s",       "Rotaciones y extensiones"),
+        ("🔥 Marcha elevando rodillas",         "2×30s",       "Eleva FC de forma progresiva y segura"),
+        ("🔥 Círculos de cadera amplios",       "2×10 c/dir",  "Lubrica cadera antes del cardio continuo"),
+        ("🔥 Rotaciones de tronco de pie",      "1×20",        "Moviliza columna torácica"),
     ],
 }
+# Grupos que no tienen calentamiento específico usan el de 'cardio'
+CALENTAMIENTO_FALLBACK = "cardio"
+
+# ── NUTRICIÓN POR OBJETIVO ────────────────────────────────────────────────────
+# Fuente: Ivy & Portman (2004) nutrient timing, Phillips (2011) proteína síntesis
+NUTRICION_POR_OBJETIVO = {
+    "gluteo":  {
+        "pre":  "🥑 Pre-entreno: avena + plátano 60min antes, o 1 fruta si vas en ayunas",
+        "post": "🥩 Post-entreno: 20-30g proteína + carbohidrato en 45min (músculo es esponja)"
+    },
+    "peso": {
+        "pre":  "☕ Pre-entreno: cafeína 30min antes potencia EPOC. Proteína si van +3h en ayunas",
+        "post": "🥗 Post-entreno: proteína magra + verduras. Evita exceso carbos nocturnos"
+    },
+    "general": {
+        "pre":  "🍌 Pre-entreno: carbohidrato simple si tienes hambre. Hidratación 500ml antes",
+        "post": "🥚 Post-entreno: proteína completa + algo de carbo para recuperación muscular"
+    }
+}
+
+# ── DURACIÓN ESTIMADA POR NÚMERO DE EJERCICIOS ────────────────────────────────
+# 5min calentamiento + (series × descanso + tiempo de ejecución) + cardio
+def estimar_duracion(ejercicios_list) -> str:
+    minutos = 10  # calentamiento
+    for e in ejercicios_list:
+        series = e.get('series', 3) if isinstance(e, dict) else 3
+        try: series = int(series)
+        except: series = 3
+        grupo = e.get('grupo', '') if isinstance(e, dict) else ''
+        if grupo == 'cardio' or (isinstance(e, dict) and e.get('ejercicio_id','').startswith('CAR')):
+            minutos += 20  # cardio dura ~20min promedio
+        else:
+            minutos += series * 3  # ~3min por serie (ejecución + descanso 90s)
+    return f"~{minutos} min"
 
 def obtener_calentamiento(grupo: str) -> str:
-    """Devuelve HTML del bloque de calentamiento para el grupo muscular del día."""
+    """
+    Devuelve el bloque de calentamiento específico para el grupo muscular.
+    Busca match parcial: "tiron/empuje" → usa "tiron" primero, luego "empuje".
+    """
     grupo_norm = grupo.lower()
-    # Buscar match parcial (ej: "tiron/empuje" → "tiron")
     ejercicios_cal = None
     for key in CALENTAMIENTO_POR_GRUPO:
         if key in grupo_norm:
             ejercicios_cal = CALENTAMIENTO_POR_GRUPO[key]
             break
     if not ejercicios_cal:
-        ejercicios_cal = CALENTAMIENTO_POR_GRUPO["cardio"]  # fallback genérico
+        ejercicios_cal = CALENTAMIENTO_POR_GRUPO[CALENTAMIENTO_FALLBACK]
 
-    txt  = "🌡 <b>CALENTAMIENTO (10 min)</b>\n"
+    txt  = "🌡 <b>CALENTAMIENTO ESPECÍFICO (8-10 min)</b>\n"
     for nombre, series, nota in ejercicios_cal:
         txt += f"  {nombre} — <i>{series}</i>\n"
-        txt += f"    💡 {nota}\n"
+        txt += f"    <i>💡 {nota}</i>\n"
     txt += "\n<b>─────────────────────</b>\n"
     txt += "💪 <b>TRABAJO PRINCIPAL</b>\n\n"
     return txt
@@ -813,7 +859,10 @@ def obtener_rutina_interactiva(user_id: int, semana: int, dia: str):
     conn_g.close()
     grupo_dia = row_g[0] if row_g else "general"
 
-    html_msg  = f"🔥 <b>Semana {semana} — {dia.capitalize()}</b> · <i>{grupo_dia.upper()}</i>\n\n"
+    # Construir header con duración estimada
+    dur_est = estimar_duracion([dict(e) for e in ejercicios])
+    html_msg  = f"🔥 <b>Semana {semana} — {dia.capitalize()}</b> · <i>{grupo_dia.upper()}</i>\n"
+    html_msg += f"⏱ <i>Duración estimada: {dur_est}</i>\n\n"
     html_msg += obtener_calentamiento(grupo_dia)
     keyboard = []
     for ex in ejercicios:
@@ -821,7 +870,6 @@ def obtener_rutina_interactiva(user_id: int, semana: int, dia: str):
         html_msg += f"{estado} <b>{safe(ex['ejercicio'])}</b> · {ex['series']}×{safe(ex['reps'])}\n"
         if ex['notas']:
             html_msg += f"   <i>💡 {safe(ex['notas'])}</i>\n"
-        # Fila con botón de check Y botón de swap
         keyboard.append([
             InlineKeyboardButton(
                 f"{estado} {safe(ex['ejercicio'])}",
@@ -833,9 +881,16 @@ def obtener_rutina_interactiva(user_id: int, semana: int, dia: str):
             )
         ])
 
-    keyboard.append([InlineKeyboardButton("📋 Ver plan completo", callback_data=f"plan:{semana}")])
-    keyboard.append([InlineKeyboardButton("🏁 Terminar Rutina", callback_data=f"finish:{semana}:{dia}")])
+    # Nota de nutrición al final (Ivy & Portman 2004)
+    obj_key = "gluteo" if "gluteo" in grupo_dia else ("peso" if "peso" in grupo_dia else "general")
+    nutr = NUTRICION_POR_OBJETIVO.get(obj_key, NUTRICION_POR_OBJETIVO["general"])
+    html_msg += f"\n<b>─────────────────────</b>\n"
+    html_msg += f"{nutr['pre']}\n"
+    html_msg += f"{nutr['post']}\n"
     html_msg += "\n👇 <i>Marca cada ejercicio · 🔄 para cambiarlo</i>"
+
+    keyboard.append([InlineKeyboardButton("📋 Ver plan completo", callback_data=f"plan:{semana}")])
+    keyboard.append([InlineKeyboardButton("🏁 Terminar Rutina",   callback_data=f"finish:{semana}:{dia}")])
     return html_msg, InlineKeyboardMarkup(keyboard)
 
 def formatear_plan_por_semanas(user_id: int) -> list[str]:
@@ -1283,7 +1338,11 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         lambda p=prompt, sp=system_prompt_dinamico: client.models.generate_content(
                             model='gemini-2.0-flash',
                             contents=p,
-                            config=types.GenerateContentConfig(system_instruction=sp)
+                            config=types.GenerateContentConfig(
+                                system_instruction=sp,
+                                max_output_tokens=6000,
+                                temperature=0.3,        # menos creatividad = JSON más limpio
+                            )
                         )
                     ),
                     timeout=90
