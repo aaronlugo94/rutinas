@@ -15,8 +15,13 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 # ==========================================
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
+# Silenciar loggers verbosos que no aportan valor
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("telegram.ext").setLevel(logging.WARNING)
+logging.getLogger("google.auth").setLevel(logging.WARNING)
 
-ALLOWED_USERS = {1557254587,8468355326}  # ⚠️ REEMPLAZA CON LOS IDs NUMÉRICOS REALES
+ALLOWED_USERS = {1557254587}  # ⚠️ REEMPLAZA CON LOS IDs NUMÉRICOS REALES
 DB_PATH = Path("/app/data/rutinas.db")
 
 def safe(text: str) -> str:
@@ -138,83 +143,180 @@ VALID_IDS  = {ex["ejercicio_id"] for ex in CATALOGO}
 CATALOGO_POR_ID = {ex["ejercicio_id"]: ex for ex in CATALOGO}
 
 def construir_system_prompt(perfil: dict) -> str:
-    """System prompt compacto. El catálogo se pasa en el user prompt."""
-    nivel  = perfil.get("nivel", "principiante")
-    obj    = perfil.get("objetivo", "general")
-    dias   = int(perfil.get("dias", 3))
-    dur    = int(perfil.get("duracion_min", 60))
-    lim    = perfil.get("limitaciones", "ninguna")
+    """
+    System prompt con ciencia aplicada real.
+    Fuentes: Schoenfeld (2010,2017), Contreras (2015 EMG), Nippard (2023),
+             Ethier (BuildWithScience), Krieger (2010 meta-análisis), ACSM 2021.
+    """
+    nivel = perfil.get("nivel", "principiante")
+    obj   = perfil.get("objetivo", "general")
+    dias  = int(perfil.get("dias", 3))
+    dur   = int(perfil.get("duracion_min", 60))
+    lim   = perfil.get("limitaciones", "ninguna")
 
-    if dur <= 45:
-        ej = 3
-    elif dur >= 90:
-        ej = 5
-    else:
-        ej = 4
+    ej = 3 if dur <= 45 else (5 if dur >= 90 else 4)
 
+    # ── SPLIT CIENTÍFICO ──────────────────────────────────────────────────────
+    # Principio: frecuencia 2x/semana por grupo = superior a 1x (Schoenfeld 2016 meta-análisis)
+    if dias == 3:
+        if "gluteo" in obj:
+            split = """SPLIT 3 DÍAS — Glúteo 2x/semana (frecuencia óptima Schoenfeld 2016):
+Día 1 → grupo=gluteo   : hip_thrust + compuesto_pierna + bisagra_cadera + aislamiento_gluteo [+ cardio si ej=4+]
+Día 2 → grupo=tiron    : jalón + remo + curl_biceps + face_pull [+ cardio si ej=4+]
+Día 3 → grupo=gluteo   : variante_hip_thrust + prensa + isquiotibial + abduccion [+ cardio]
+⚠ Día 1 y Día 3 son de glúteo. Día 2 NO incluye glúteo."""
+        else:
+            split = """SPLIT 3 DÍAS — Full Body frecuencia alta (Rhea 2003: 3x/semana óptimo para principiante):
+Día 1 → grupo=pierna   : sentadilla + isquio + empuje_horizontal + tirón_vertical
+Día 2 → grupo=empuje   : press_pecho + press_hombro + tirón_horizontal + core
+Día 3 → grupo=pierna   : prensa + glúteo + empuje_inclinado + tirón + cardio
+⚠ Distribución equilibrada. Nunca 2 días seguidos el mismo grupo."""
+    elif dias == 4:
+        if "gluteo" in obj:
+            split = """SPLIT 4 DÍAS — Upper/Lower con especialización glúteo (Krieger 2010: volumen distribuido > concentrado):
+Día 1 → grupo=gluteo   : hip_thrust + sentadilla + PDR + aislamiento_gluteo + cardio
+Día 2 → grupo=empuje   : press_pecho + press_hombro + triceps + cardio_ligero
+Día 3 → grupo=pierna   : prensa + sentadilla_variante + isquio + abduccion + cardio
+Día 4 → grupo=tiron    : jalón + remo + curl + face_pull
+⚠ Días 1 y 3 son glúteo/pierna. Días 2 y 4 son upper. Sin glúteo en días 2 y 4."""
+        else:
+            split = """SPLIT 4 DÍAS — Upper/Lower (equilibrio óptimo recuperación-frecuencia):
+Día 1 → grupo=pierna   : sentadilla + prensa + isquio + glúteo + cardio
+Día 2 → grupo=empuje   : press_pecho + press_hombro + triceps + core
+Día 3 → grupo=pierna   : prensa + peso_muerto_rumano + abduccion + cardio
+Día 4 → grupo=tiron    : jalón + remo + curl + face_pull"""
+    else:  # 5 días
+        if "gluteo" in obj:
+            split = """SPLIT 5 DÍAS — PPL especializado glúteo (máximo volumen con recuperación adecuada):
+Día 1 → grupo=gluteo   : hip_thrust_pesado + sentadilla + PDR + abduccion + cardio_inclinada
+Día 2 → grupo=empuje   : press_pecho + press_hombro + triceps + cardio_ligero
+Día 3 → grupo=tiron    : jalón + remo_pesado + curl + face_pull  [SIN glúteo]
+Día 4 → grupo=pierna   : prensa + sentadilla_variante + isquio + patada_polea + cardio
+Día 5 → grupo=gluteo   : hip_thrust_banda + extensión_cadera + fire_hydrant + caminata_inclinada
+⚠ CRÍTICO: Días 2 y 3 son upper sin glúteo. Días 1,4,5 incluyen glúteo con volumen decreciente."""
+        else:
+            split = """SPLIT 5 DÍAS — PPL (Push/Pull/Legs — Nippard 2023 intermediate template):
+Día 1 → grupo=pierna   : sentadilla + prensa + isquio + glúteo + cardio
+Día 2 → grupo=empuje   : press_pecho + press_inclinado + hombro + triceps
+Día 3 → grupo=tiron    : jalón + remo + curl + face_pull
+Día 4 → grupo=pierna   : prensa + PDR + abduccion + cardio
+Día 5 → grupo=empuje   : press_hombro + aperturas + triceps + core"""
+
+    # ── CIENCIA DE VOLUMEN Y PROGRESIÓN ──────────────────────────────────────
+    # Schoenfeld (2017): 10-20 series/semana/grupo para hipertrofia. RIR como proxy de intensidad.
+    # Nippard: progresión lineal de carga es el marcador #1 de progreso real.
     if nivel == "principiante":
-        prog = "S1:3x15 S2:3x12 S3:3x10 S4:4x8. S1-2 máquinas/básicos, S3-4 libres/mancuernas."
+        prog = """PROGRESIÓN LINEAL (Schoenfeld 2010 — adaptación neuromuscular primaria S1-S2):
+  S1: 3 series × 15 reps — RIR=4 — técnica > carga. Máquinas guiadas. Sin sentadilla búlgara.
+  S2: 3 series × 12 reps — RIR=3 — +5-10% carga. Mismos ejercicios que S1.
+  S3: 3 series × 10 reps — RIR=2 — introduce mancuernas y movimientos libres. Nuevos ejercicios.
+  S4: 4 series × 8  reps — RIR=1 — máximo estímulo del bloque. Carga desafiante.
+CAMBIO EJERCICIOS: S3-S4 deben usar ejercicios DISTINTOS a S1-S2 del mismo grupo funcional."""
     elif nivel == "intermedio":
-        prog = "S1:4x12 S2:4x8-10 S3:4x6-8 S4:3x12 DELOAD."
+        prog = """PERIODIZACIÓN ONDULANTE (DUP — Rhea 2003: superior a progresión lineal en intermedios):
+  S1: 4 series × 12 reps — RIR=3 — hipertrofia metabólica, pump máximo
+  S2: 4 series × 8-10 reps — RIR=2 — hipertrofia mecánica, +5-10% carga
+  S3: 4 series × 6-8 reps  — RIR=1 — zona fuerza-hipertrofia, máxima tensión mecánica
+  S4: 3 series × 12 reps   — RIR=4 — DELOAD activo, 60% de carga máxima, recuperación
+CAMBIO EJERCICIOS: S3 introduce ejercicio más complejo que S1 (ej: Smith → barra libre)."""
     else:
-        prog = "Alterna días: Fuerza 5x5 / Hipertrofia 4x10 / Volumen 3x15. S4 DELOAD."
+        prog = """PERIODIZACIÓN ONDULANTE DIARIA (Figueiredo 2018 — avanzados necesitan variación intra-semana):
+  Día Fuerza:     5 series × 3-5 reps  — RIR=0-1 — compuestos pesados únicamente
+  Día Hipertrofia: 4 series × 8-12 reps — RIR=1-2 — tempo 2-1-2, rango completo
+  Día Volumen:    3 series × 15-20 reps — RIR=2-3 — congestión, aislamiento
+  S4: DELOAD — reducir volumen 40%, mantener intensidad."""
 
+    # ── PROTOCOLO POR OBJETIVO (evidencia EMG y fisiología) ──────────────────
     if "gluteo" in obj:
-        obj_nota = "Glúteo: Hip thrust PRIMERO siempre (200% MVIC Contreras). Orden: hip thrust → sentadilla → PDR → aislamiento → cardio."
+        obj_nota = """PROTOCOLO GLÚTEO — Contreras (2015) EMG + Nippard Glute Science:
+  ACTIVACIÓN: Hip thrust/Puente = 200% MVIC (máximo voluntario isométrico). PRIMER ejercicio SIEMPRE.
+  COMPUESTO: Sentadilla >90° = 130-170% MVIC. Segundo ejercicio en días glúteo.
+  BISAGRA: PDR/Good morning = 110-150% MVIC + excéntrico largo. Tercer ejercicio.
+  AISLAMIENTO: Patada/Abducción = 60-120% MVIC. Cuarto ejercicio.
+  CARDIO: Cinta inclinada 10% activa glúteo en cada paso. NUNCA trote en día post-hip thrust.
+  TEMPO RECOMENDADO: Excéntrico 2s + pausa 1s arriba + concéntrico rápido (potencia glútea)."""
     elif "peso" in obj:
-        obj_nota = "Pérdida peso: compuestos multiarticulares + cardio AL FINAL (EPOC). Zona 2 65-70% FCmax."
+        obj_nota = """PROTOCOLO PÉRDIDA GRASA — ACSM 2021 + Wilson (2012) EPOC:
+  EPOC máximo: compuestos multiarticulares grandes generan quema 24-48h post-sesión.
+  ORDEN: pesas ANTES que cardio (preservar glucógeno muscular para el trabajo de fuerza).
+  CARDIO: zona 2 (65-70% FCmax) = oxidación grasa óptima. 20-30 min al final de sesión.
+  INTENSIDAD RESISTENCIA: 60-75% 1RM, descansos cortos 60-90s (mayor EPOC que descansos largos)."""
     else:
-        obj_nota = "Tonificación: balance empuje=tirón, compuestos + aislamiento, cardio 15min final."
+        obj_nota = """PROTOCOLO TONIFICACIÓN — Schoenfeld (2012) + Sahrmann postura:
+  BALANCE: ratio empuje:tirón = 1:1.5 (más tirón para compensar postura moderna).
+  RANGO: 8-15 reps a 60-75% 1RM = tensión mecánica suficiente para hipertrofia moderada.
+  CORE: plancha/dead bug > crunch (estabilización > flexión para salud lumbar — McGill 2010).
+  CARDIO: zona 2-3, 15-20 min al final de sesión."""
 
+    # ── LIMITACIONES BIOMECÁNICAS ─────────────────────────────────────────────
     if lim == "rodilla":
-        lim_nota = "PROHIBIDO: sentadilla búlgara, desplante caminando. USA: prensa, goblet, hip thrust."
+        lim_nota = "RODILLA: PROHIBIDO sentadilla búlgara, desplante caminando (shear tibio-femoral alto). USA: prensa pierna (shear controlado), goblet sentadilla, hip thrust (zero carga rodilla), curl femoral."
     elif lim == "espalda":
-        lim_nota = "PROHIBIDO: peso muerto convencional, good morning. USA: prensa, jalón, hip thrust."
+        lim_nota = "ESPALDA BAJA: PROHIBIDO peso muerto convencional, good morning, remo >45°. USA: prensa pierna, jalón al pecho (descompresión lumbar), hip thrust (activa lumbar sin compresión axial), remo máquina con soporte."
     elif lim == "hombro":
-        lim_nota = "PROHIBIDO: press militar, elevaciones frontales. USA: press inclinado 45°, face pull."
+        lim_nota = "HOMBRO: PROHIBIDO press militar (impingement subacromial), elevaciones frontales, fondos. USA: press inclinado 45° (codos a 45° del tronco), face pull (rehabilita manguito), jalón agarre neutro."
     else:
-        lim_nota = "Sin limitaciones."
+        lim_nota = "Sin limitaciones. Priorizar rango completo de movimiento en todos los ejercicios (mayor activación muscular — Pinto 2012)."
 
-    return f"""Eres un generador de planes de entrenamiento. SOLO produces JSON válido, NADA más.
+    return f"""Eres un coach de fitness de élite con PhD en ciencias del ejercicio. Metodología: Schoenfeld, Contreras, Nippard, Ethier.
+SOLO produces JSON válido. CERO texto fuera del JSON.
 
-PERFIL: nivel={nivel}, objetivo={obj}, {dias}días/sem, {dur}min/sesión, limitaciones={lim}
-EJERCICIOS POR DÍA: exactamente {ej} (el cardio cuenta como uno, siempre al final)
-PROGRESIÓN: {prog}
-OBJETIVO: {obj_nota}
+PERFIL DEL USUARIO:
+  Nivel: {nivel} | Objetivo: {obj} | Días/semana: {dias} | Duración: {dur}min | Limitaciones: {lim}
+
+ESTRUCTURA DE SESIÓN — {ej} EJERCICIOS POR DÍA (exacto):
+  Posición 1: Compuesto dominante del objetivo (mayor activación EMG)
+  Posición 2: Compuesto secundario (patrón motor complementario)
+  Posición 3: Aislamiento primario (músculo objetivo)
+  {"Posición 4: Aislamiento secundario o core" if ej >= 4 else ""}
+  {"Posición 5: CARDIO — siempre último" if ej >= 5 else "Última posición: CARDIO (CAR_01..CAR_10) — siempre al final" if ej == 4 else "Posición 3: CARDIO al final si aplica"}
+
+{split}
+
+{prog}
+
+{obj_nota}
 {lim_nota}
 
-REGLAS ABSOLUTAS:
-1. SOLO IDs del CATALOGO que recibirás. Copia IDs exactos, sin inventar.
+REGLAS ABSOLUTAS (cada violación invalida el plan):
+1. SOLO IDs exactos del CATALOGO. Sin inventar. Sin modificar.
 2. Exactamente {ej} ejercicios por día. Ni más ni menos.
-3. Series/reps DISTINTAS cada semana según progresión.
-4. Al menos {max(1,dias-2)} días/semana deben terminar con cardio (CAR_01 a CAR_10).
-5. reps SIEMPRE string: "15" "8-10" "45s". NUNCA número.
-6. JSON PURO. Sin markdown. Sin texto. Sin campo url.
-7. Varía ejercicios entre semanas (S3-S4 ≠ S1-S2 cuando sea posible).
+3. series y reps DISTINTOS cada semana. NUNCA las mismas 4 semanas.
+4. reps SIEMPRE string: "15" "8-10" "45s" "30s". NUNCA número.
+5. Al menos {max(1, dias-2)} días/semana terminan con cardio (CAR_01..CAR_10).
+6. S3-S4 usan ejercicios distintos a S1-S2 (misma función, diferente variante).
+7. Notas: coaching técnico específico y útil. Mínimo 50% de ejercicios con nota.
+8. Días de la semana DISTINTOS. Mismo grupo muscular: mínimo 48h entre sesiones.
+9. JSON PURO. Sin markdown. Sin explicaciones. Sin campo url.
 
-FORMATO EXACTO (solo esto, nada más):
-{{"semanas":[{{"semana":1,"dias":[{{"dia":"lunes","grupo":"gluteo","ejercicios":[{{"ejercicio_id":"GLU_03","ejercicio":"Hip thrust en banco","orden":1,"series":3,"reps":"15","notas":"Pausa 1s arriba"}}]}}]}}]}}"""
+FORMATO (solo JSON, nada más):
+{{"semanas":[{{"semana":1,"dias":[{{"dia":"lunes","grupo":"gluteo","ejercicios":[{{"ejercicio_id":"GLU_03","ejercicio":"Hip thrust en banco","orden":1,"series":3,"reps":"15","notas":"Pausa 1s arriba, excéntrico 2s"}}]}}]}}]}}"""
 
 
 def construir_prompt_usuario(perfil: dict) -> str:
-    """Prompt del usuario: incluye catálogo comprimido + instrucción."""
-    nivel  = perfil.get("nivel", "principiante")
-    obj    = perfil.get("objetivo", "general")
-    dias   = int(perfil.get("dias", 3))
-    dur    = int(perfil.get("duracion_min", 60))
-    lim    = perfil.get("limitaciones", "ninguna")
+    """Catálogo comprimido — va en el mensaje del usuario para reducir tokens del system prompt."""
+    obj   = perfil.get("objetivo", "general")
+    nivel = perfil.get("nivel", "principiante")
+    dias  = int(perfil.get("dias", 3))
+    dur   = int(perfil.get("duracion_min", 60))
+    lim   = perfil.get("limitaciones", "ninguna")
 
-    # Catálogo comprimido: solo ID, nombre abreviado, grupo, rol
-    cat_comprimido = []
-    for e in CATALOGO:
-        cat_comprimido.append(f'{e["ejercicio_id"]}|{e["nombre"][:30]}|{e["grupo"]}|{e.get("rol","?")}')
-    cat_str = "\n".join(cat_comprimido)
+    # Catálogo organizado por grupo para que Gemini entienda la estructura
+    grupos_orden = ["gluteo", "pierna", "empuje", "tiron", "core", "cardio"]
+    lineas = []
+    for g in grupos_orden:
+        ejercicios_g = [e for e in CATALOGO if e["grupo"] == g]
+        lineas.append(f"\n## {g.upper()}")
+        for e in ejercicios_g:
+            lineas.append(f'  {e["ejercicio_id"]}|{e["nombre"]}|{e.get("rol","?")}')
 
-    return f"""CATALOGO (formato: ID|nombre|grupo|rol):
-{cat_str}
+    return f"""CATALOGO DISPONIBLE (formato: ID|nombre|rol):
+{"".join(lineas)}
 
-Genera plan JSON de 4 semanas: objetivo={obj}, nivel={nivel}, {dias}días/sem, {dur}min/sesión, limitaciones={lim}.
-Usa SOLO los IDs del catálogo de arriba. JSON puro, nada más."""
+INSTRUCCIÓN: Genera el plan de entrenamiento de 4 semanas completo en JSON.
+Parámetros: objetivo={obj}, nivel={nivel}, {dias}días/semana, {dur}min/sesión, limitaciones={lim}.
+Aplica el split muscular, la progresión y el protocolo del system prompt.
+Responde ÚNICAMENTE con el JSON. Sin texto antes ni después."""
 
 
 
@@ -621,6 +723,62 @@ def procesar_milestones(user_id: int, semana_actual: int) -> list[str]:
 # ==========================================
 # 6. UI Y RENDERER
 # ==========================================
+# ── CALENTAMIENTOS POR GRUPO MUSCULAR (basado en activación neuromuscular previa) ──
+# Fuente: McGill 2010, Contreras 2015 — activación glúteo pre-sesión reduce dominancia de cuádriceps
+CALENTAMIENTO_POR_GRUPO = {
+    "gluteo": [
+        ("🔥 Clamshell con banda",           "2×15 c/lado", "Activa glúteo medio antes de cargar"),
+        ("🔥 Puente de glúteo sin carga",     "2×20",        "Activación neuromuscular, pausa 1s"),
+        ("🔥 Movilidad de cadera (rotación)", "2×10 c/lado", "Círculos lentos, rango completo"),
+    ],
+    "pierna": [
+        ("🔥 Sentadilla goblet con peso leve","2×15",        "Activa cuádrices e isquios"),
+        ("🔥 Movilidad de cadera dinámica",   "2×10 c/lado", "Paso lateral con banda o libre"),
+        ("🔥 Elevación de talones",           "2×15",        "Activa gemelos y tobillos"),
+    ],
+    "empuje": [
+        ("🔥 Rotación de hombros con banda",  "2×15 c/dir",  "Moviliza manguito rotador"),
+        ("🔥 Flexiones en rodillas",          "2×10",        "Activa pectoral y tríceps"),
+        ("🔥 Círculos de brazo",              "2×10 c/dir",  "Movilidad escapular"),
+    ],
+    "tiron": [
+        ("🔥 Face pull con banda ligera",     "2×15",        "Activa manguito y romboides"),
+        ("🔥 Superman en suelo",              "2×12",        "Activa espalda baja y media"),
+        ("🔥 Jalón con banda en pie",         "2×12",        "Pre-activación dorsal"),
+    ],
+    "core": [
+        ("🔥 Bird dog",                       "2×10 c/lado", "Estabilización lumbo-pélvica"),
+        ("🔥 Dead bug lento",                 "2×8 c/lado",  "Activación transverso"),
+        ("🔥 Plancha 20s",                    "2×20s",       "Core antiextensión"),
+    ],
+    "cardio": [
+        ("🔥 Jumping jacks",                  "2×30s",       "Eleva FC progresivamente"),
+        ("🔥 Trote suave en sitio",           "2×30s",       "Calienta articulaciones"),
+        ("🔥 Movilidad dinámica general",     "1×60s",       "Rotaciones y extensiones"),
+    ],
+}
+
+def obtener_calentamiento(grupo: str) -> str:
+    """Devuelve HTML del bloque de calentamiento para el grupo muscular del día."""
+    grupo_norm = grupo.lower()
+    # Buscar match parcial (ej: "tiron/empuje" → "tiron")
+    ejercicios_cal = None
+    for key in CALENTAMIENTO_POR_GRUPO:
+        if key in grupo_norm:
+            ejercicios_cal = CALENTAMIENTO_POR_GRUPO[key]
+            break
+    if not ejercicios_cal:
+        ejercicios_cal = CALENTAMIENTO_POR_GRUPO["cardio"]  # fallback genérico
+
+    txt  = "🌡 <b>CALENTAMIENTO (10 min)</b>\n"
+    for nombre, series, nota in ejercicios_cal:
+        txt += f"  {nombre} — <i>{series}</i>\n"
+        txt += f"    💡 {nota}\n"
+    txt += "\n<b>─────────────────────</b>\n"
+    txt += "💪 <b>TRABAJO PRINCIPAL</b>\n\n"
+    return txt
+    return txt
+
 def obtener_rutina_interactiva(user_id: int, semana: int, dia: str):
     conn = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -645,7 +803,18 @@ def obtener_rutina_interactiva(user_id: int, semana: int, dia: str):
             return "🎉 <b>¡Completaste tu plan de 4 semanas!</b>\n\nUsa /start y pídele a tu entrenador que genere un plan nuevo.", None
         return f"📅 Día libre ({dia.capitalize()}). ¡Descansa y recupérate!", None
 
-    html_msg = f"🔥 <b>Semana {semana} — {dia.capitalize()}</b>\n\n"
+
+    # Obtener grupo del día para el calentamiento específico
+    conn_g = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
+    cur_g  = conn_g.cursor()
+    cur_g.execute("SELECT grupo FROM rutinas WHERE user_id=? AND semana=? AND dia=? LIMIT 1",
+                  (user_id, semana, dia))
+    row_g = cur_g.fetchone()
+    conn_g.close()
+    grupo_dia = row_g[0] if row_g else "general"
+
+    html_msg  = f"🔥 <b>Semana {semana} — {dia.capitalize()}</b> · <i>{grupo_dia.upper()}</i>\n\n"
+    html_msg += obtener_calentamiento(grupo_dia)
     keyboard = []
     for ex in ejercicios:
         estado = "✅" if ex['completado'] else "⬜"
