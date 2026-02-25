@@ -195,64 +195,112 @@ Formato exacto (SOLO esto):
 def parsear_semana_json(raw: str, num_semana: int) -> tuple:
     """
     Parsea la respuesta de Gemini para UNA semana.
+    Acepta múltiples formatos que Gemini puede devolver:
+      A) {"semana":1,"dias":[...]}           ← formato pedido
+      B) {"semanas":[{"semana":1,"dias":[...]}]}  ← Gemini a veces envuelve en array
+      C) [{"semana":1,"dias":[...]}]         ← array directo
     Devuelve (dict_semana, error_string).
     """
     try:
-        # Limpiar markdown
         text = raw.strip()
+        # Quitar markdown
         for prefix in ["```json", "```JSON", "```"]:
             if text.startswith(prefix):
                 text = text[len(prefix):]
                 break
         if text.endswith("```"):
             text = text[:-3]
-        # Extraer JSON
+        text = text.strip()
+
+        # Extraer el primer objeto JSON completo (maneja texto basura antes/después)
         start = text.find("{")
-        end   = text.rfind("}")
-        if start == -1 or end == -1:
-            return None, "No se encontró JSON"
-        data = json.loads(text[start:end+1])
+        start_arr = text.find("[")
+        if start == -1 and start_arr == -1:
+            return None, "No se encontró JSON en la respuesta"
 
-        # Validar estructura básica
+        # Intentar parsear como objeto o como array
+        data = None
+        # Intentar objeto primero
+        if start != -1:
+            end = text.rfind("}")
+            if end > start:
+                try:
+                    data = json.loads(text[start:end+1])
+                except json.JSONDecodeError:
+                    pass
+        # Si falla, intentar array
+        if data is None and start_arr != -1:
+            end_arr = text.rfind("]")
+            if end_arr > start_arr:
+                try:
+                    arr = json.loads(text[start_arr:end_arr+1])
+                    if arr and isinstance(arr, list):
+                        data = arr[0]
+                except json.JSONDecodeError:
+                    pass
+
+        if data is None:
+            return None, "JSON no parseable tras múltiples intentos"
+
+        # ── Normalizar formato: extraer el dict de la semana ──────────────────
+        # Formato B: {"semanas":[{"semana":1,"dias":[...]}]}
+        if "semanas" in data and isinstance(data["semanas"], list):
+            if data["semanas"]:
+                data = data["semanas"][0]
+
+        # Formato con clave numérica: {1: {"dias":[...]}} (raro pero posible)
+        if str(num_semana) in data and "dias" not in data:
+            data = data[str(num_semana)]
+
+        # Verificar que tenemos "dias"
         if "dias" not in data:
-            return None, "Falta campo 'dias'"
-        if not data["dias"]:
-            return None, "dias vacío"
+            # Último intento: buscar recursivamente
+            for v in data.values():
+                if isinstance(v, dict) and "dias" in v:
+                    data = v
+                    break
+            if "dias" not in data:
+                return None, f"Falta campo 'dias'. Claves recibidas: {list(data.keys())}"
 
-        # Normalizar y validar ejercicios
+        if not data["dias"]:
+            return None, "dias está vacío"
+
+        # ── Normalizar y validar ejercicios ───────────────────────────────────
         for d in data["dias"]:
-            if "grupo" not in d:
+            # Inferir grupo del día si falta
+            if not d.get("grupo"):
                 for e in d.get("ejercicios", []):
                     eid = str(e.get("ejercicio_id", ""))
                     if eid in CATALOGO_POR_ID:
                         d["grupo"] = CATALOGO_POR_ID[eid]["grupo"]
                         break
-                if "grupo" not in d:
+                if not d.get("grupo"):
                     d["grupo"] = "general"
 
+            ejercicios_validos = []
             for e in d.get("ejercicios", []):
                 eid = str(e.get("ejercicio_id", ""))
                 if eid not in VALID_IDS:
-                    return None, f"ID inválido: {eid}"
-                # Siempre nombre del catálogo
-                e["ejercicio"] = CATALOGO_POR_ID[eid]["nombre"]
-                # reps como string
-                if not isinstance(e.get("reps", ""), str):
-                    e["reps"] = str(e.get("reps", "10"))
-                # Sanear notas
+                    logger.warning(f"ID ignorado (no en catálogo): {eid}")
+                    continue  # Saltar en lugar de fallar toda la semana
+                e["ejercicio"] = CATALOGO_POR_ID[eid]["nombre"]  # nombre del catálogo siempre
+                e["reps"]      = str(e.get("reps", "10"))        # reps como string
                 nota = str(e.get("notas", "")).replace('"','').replace("'",'').strip()[:60]
                 e["notas"] = nota
-                # series como int
                 try: e["series"] = int(e.get("series", 3))
                 except: e["series"] = 3
+                ejercicios_validos.append(e)
+
+            d["ejercicios"] = ejercicios_validos
+            if not ejercicios_validos:
+                return None, f"Día {d.get('dia','?')} sin ejercicios válidos"
 
         data["semana"] = num_semana
         return data, None
 
-    except json.JSONDecodeError as ex:
-        return None, f"JSON inválido: {ex}"
     except Exception as ex:
-        return None, f"Error: {ex}"
+        logger.exception(f"Error parseando semana {num_semana}")
+        return None, f"Error inesperado: {ex}"
 
 
 def construir_system_prompt(perfil: dict) -> str:
@@ -954,12 +1002,12 @@ def obtener_calentamiento(grupo: str) -> str:
     if not ejercicios_cal:
         ejercicios_cal = CALENTAMIENTO_POR_GRUPO[CALENTAMIENTO_FALLBACK]
 
-    txt  = "🌡 <b>CALENTAMIENTO ESPECÍFICO (8-10 min)</b>\n"
+    txt  = "🌡 <b>CALENTAMIENTO</b> <i>(8-10 min)</i>\n"
     for nombre, series, nota in ejercicios_cal:
-        txt += f"  {nombre} — <i>{series}</i>\n"
-        txt += f"    <i>💡 {nota}</i>\n"
-    txt += "\n<b>─────────────────────</b>\n"
-    txt += "💪 <b>TRABAJO PRINCIPAL</b>\n\n"
+        txt += f"  ▸ {nombre} — <b>{series}</b>\n"
+        txt += f"    <i>» {nota}</i>\n"
+    txt += "\n💪 <b>TRABAJO PRINCIPAL</b>\n"
+    txt += "───────────────────────\n"
     return txt
     return txt
 
@@ -997,17 +1045,22 @@ def obtener_rutina_interactiva(user_id: int, semana: int, dia: str):
     conn_g.close()
     grupo_dia = row_g[0] if row_g else "general"
 
-    # Construir header con duración estimada
-    dur_est = estimar_duracion([dict(e) for e in ejercicios])
-    html_msg  = f"🔥 <b>Semana {semana} — {dia.capitalize()}</b> · <i>{grupo_dia.upper()}</i>\n"
-    html_msg += f"⏱ <i>Duración estimada: {dur_est}</i>\n\n"
+    # Construir header estético
+    dur_est   = estimar_duracion([dict(e) for e in ejercicios])
+    grupo_icon = {"gluteo":"🍑","pierna":"🦵","empuje":"💪","tiron":"🏋️",
+                  "core":"🎯","cardio":"🏃","general":"⚡"}.get(grupo_dia.lower(),"💪")
+    html_msg  = f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    html_msg += f"{grupo_icon} <b>Semana {semana} · {dia.capitalize()}</b>\n"
+    html_msg += f"   <i>{grupo_dia.upper()} · {dur_est}</i>\n"
+    html_msg += f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     html_msg += obtener_calentamiento(grupo_dia)
     keyboard = []
-    for ex in ejercicios:
+    for idx_ex, ex in enumerate(ejercicios, 1):
         estado = "✅" if ex['completado'] else "⬜"
-        html_msg += f"{estado} <b>{safe(ex['ejercicio'])}</b> · {ex['series']}×{safe(ex['reps'])}\n"
+        html_msg += f"\n{estado} <b>{idx_ex}. {safe(ex['ejercicio'])}</b>\n"
+        html_msg += f"   📌 {ex['series']} series × <b>{safe(ex['reps'])}</b> reps\n"
         if ex['notas']:
-            html_msg += f"   <i>💡 {safe(ex['notas'])}</i>\n"
+            html_msg += f"   💡 <i>{safe(ex['notas'])}</i>\n"
         keyboard.append([
             InlineKeyboardButton(
                 f"{estado} {safe(ex['ejercicio'])}",
@@ -1019,13 +1072,14 @@ def obtener_rutina_interactiva(user_id: int, semana: int, dia: str):
             )
         ])
 
-    # Nota de nutrición al final (Ivy & Portman 2004)
+    # Nota de nutrición (Ivy & Portman 2004 — timing de nutrientes)
     obj_key = "gluteo" if "gluteo" in grupo_dia else ("peso" if "peso" in grupo_dia else "general")
     nutr = NUTRICION_POR_OBJETIVO.get(obj_key, NUTRICION_POR_OBJETIVO["general"])
-    html_msg += f"\n<b>─────────────────────</b>\n"
-    html_msg += f"{nutr['pre']}\n"
-    html_msg += f"{nutr['post']}\n"
-    html_msg += "\n👇 <i>Marca cada ejercicio · 🔄 para cambiarlo</i>"
+    html_msg += f"\n───────────────────────\n"
+    html_msg += f"🥗 <b>NUTRICIÓN HOY</b>\n"
+    html_msg += f"  {nutr['pre']}\n"
+    html_msg += f"  {nutr['post']}\n"
+    html_msg += "\n<i>✅ Marca · 🔄 Cambia ejercicio</i>"
 
     keyboard.append([InlineKeyboardButton("📋 Ver plan completo", callback_data=f"plan:{semana}")])
     keyboard.append([InlineKeyboardButton("🏁 Terminar Rutina",   callback_data=f"finish:{semana}:{dia}")])
@@ -1108,33 +1162,63 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
 
     if not tiene_plan:
-        teclado = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🍑 Aumentar glúteo y pierna", callback_data="obj:gluteos")],
-            [InlineKeyboardButton("🔥 Perder peso y sudar",      callback_data="obj:peso")],
-            [InlineKeyboardButton("💪 Tonificar todo el cuerpo", callback_data="obj:general")]
-        ])
-        await update.message.reply_text(
-            "👋 <b>¡Hola!</b> Vamos a crear tu plan personalizado.\n\n"
-            "<b>Paso 1/4</b> — ¿Cuál es tu objetivo principal?",
-            reply_markup=teclado, parse_mode="HTML"
+        intro = (
+            "🏋️ <b>GymCoach AI</b> — Tu entrenador personal inteligente\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "🧬 <b>¿Qué hay detrás?</b>\n"
+            "Este bot usa <b>Gemini AI</b> + ciencia del ejercicio de élite para crear\n"
+            "un programa <i>único para ti</i>, no genérico.\n\n"
+            "📚 <b>Ciencia aplicada:</b>\n"
+            "  • <b>Schoenfeld (2016)</b> — frecuencia 2x/semana por grupo muscular\n"
+            "  • <b>Contreras (2015)</b> — orden por activación EMG (hip thrust primero)\n"
+            "  • <b>Nippard</b> — progresión real: 15→12→10→8 reps con carga creciente\n"
+            "  • <b>McGill</b> — calentamiento específico por grupo, no genérico\n\n"
+            "🎯 <b>¿Cómo funciona?</b>\n"
+            "  1️⃣ Me dices tu objetivo y nivel (6 preguntas rápidas)\n"
+            "  2️⃣ La IA genera tu plan de <b>4 semanas</b> personalizado\n"
+            "  3️⃣ Cada día ves tu rutina con calentamiento específico\n"
+            "  4️⃣ Marca ejercicios ✅ · Cambia los que no te gusten 🔄\n"
+            "  5️⃣ El plan progresa solo cada semana\n\n"
+            "⏱ <i>Crear tu plan toma ~45 segundos</i>\n"
         )
+        teclado = InlineKeyboardMarkup([[
+            InlineKeyboardButton("🚀 Crear mi plan personalizado", callback_data="obj:inicio")
+        ]])
+        await update.message.reply_text(intro, reply_markup=teclado, parse_mode="HTML")
         return
+
 
     semana, dia = obtener_estado_usuario(user_id)
     stats = obtener_stats_suaves(user_id)
 
-    if stats["total_ejercicios"] > 0:
-        bloque = (f"💚 <b>Tu progreso:</b>\n"
-                  f"🔥 Ejercicios totales: {stats['total_ejercicios']}\n"
-                  f"📆 Esta semana: {stats['ejercicios_semana']}\n"
-                  f"🏆 Rutinas terminadas: {stats['rutinas_completas']}\n\n"
-                  f"👇 <b>Tu entrenamiento de hoy:</b>\n\n")
-    else:
-        bloque = "✨ <b>¡Qué emoción empezar!</b> Aquí tienes tu primera rutina:\n\n"
-
     texto_rutina, teclado = obtener_rutina_interactiva(user_id, semana, dia)
+
+    if stats["total_ejercicios"] > 0:
+        # Barra de progreso visual (cada 10 ejercicios = un bloque)
+        bloques = min(10, stats["total_ejercicios"] // 10)
+        barra = "🟩" * bloques + "⬜" * (10 - bloques)
+        bloque = (
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"  🏋️ <b>GymCoach AI</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"📊 <b>Tu progreso</b>\n"
+            f"  {barra}\n"
+            f"  🔥 <b>{stats['total_ejercicios']}</b> ejercicios completados\n"
+            f"  📆 Esta semana: <b>{stats['ejercicios_semana']}</b>\n"
+            f"  🏆 Rutinas completas: <b>{stats['rutinas_completas']}</b>\n\n"
+            f"───────────────────────────\n"
+        )
+    else:
+        bloque = (
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"  🏋️ <b>GymCoach AI</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"✨ <b>¡Primera rutina!</b> Ya empezaste — lo más difícil es esto.\n\n"
+            f"───────────────────────────\n"
+        )
+
     await update.message.reply_text(
-        bloque + texto_rutina, reply_markup=teclado,
+        bloque + "\n" + texto_rutina, reply_markup=teclado,
         parse_mode="HTML", disable_web_page_preview=True
     )
 
