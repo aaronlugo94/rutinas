@@ -22,7 +22,24 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("telegram.ext").setLevel(logging.WARNING)
 logging.getLogger("google.auth").setLevel(logging.WARNING)
 
-ALLOWED_USERS = {1557254587}  # ⚠️ REEMPLAZA CON LOS IDs NUMÉRICOS REALES
+# ALLOWED_USERS ya no es hardcode — la fuente de verdad es la tabla usuarios_permitidos
+# Mantenemos el set como cache en memoria para arranque rápido (se llena desde DB)
+ALLOWED_USERS: set = set()
+
+def cargar_usuarios_permitidos():
+    """Carga desde DB los usuarios con acceso. Llamar en init."""
+    global ALLOWED_USERS
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
+        cur  = conn.cursor()
+        cur.execute("SELECT user_id FROM usuarios_permitidos")
+        ALLOWED_USERS = {row[0] for row in cur.fetchall()}
+        conn.close()
+        logger.info(f"Usuarios permitidos cargados: {ALLOWED_USERS}")
+    except Exception as e:
+        # Si falla, usar hardcode como fallback de seguridad
+        ALLOWED_USERS = {1557254587, 8468355326}
+        logger.warning(f"Fallback hardcode ALLOWED_USERS: {e}")
 DB_PATH = Path("/app/data/rutinas.db")
 
 def safe(text: str) -> str:
@@ -150,6 +167,53 @@ def patron_de(ej_id: str) -> str:
     """Devuelve el patrón biomecánico de un ejercicio, o 'desconocido'."""
     return PATRON_POR_ID.get(str(ej_id), "desconocido")
 
+
+# ── METADATA FATIGA (auditoría #8 — no 2 alta-fatiga seguidos) ────────────────
+FATIGA_POR_ID = {
+    # Alta fatiga (SNC + muscular — limitante de sesión)
+    "PIE_01":"alta","PIE_02":"alta","PIE_03":"alta","PIE_08":"alta",
+    "PIE_09":"alta","PIE_10":"alta","PIE_14":"alta","PIE_16":"alta",
+    "GLU_03":"alta","GLU_04":"alta","GLU_07":"alta","GLU_08":"alta","GLU_19":"alta",
+    "EMP_01":"alta","EMP_02":"alta","EMP_03":"alta","EMP_06":"alta",
+    "TIR_01":"alta","TIR_04":"alta","TIR_05":"alta","TIR_06":"alta",
+    # Media fatiga
+    "PIE_06":"media","PIE_07":"media","PIE_11":"media","PIE_12":"media",
+    "GLU_05":"media","GLU_06":"media","GLU_09":"media","GLU_17":"media",
+    "EMP_04":"media","EMP_05":"media","EMP_07":"media","EMP_08":"media",
+    "TIR_02":"media","TIR_03":"media","TIR_07":"media","TIR_14":"media",
+}
+
+def fatiga_de(ej_id: str) -> str:
+    return FATIGA_POR_ID.get(str(ej_id), "baja")
+
+
+# ── MÁXIMO EJERCICIOS POR PATRÓN EN UN DÍA ────────────────────────────────────
+# Regla de oro (auditoría doc #8): max 2 del mismo patrón
+# Patrones "singulares" = solo 1 permitido (demasiado específicos)
+MAX_POR_PATRON = {
+    "puente_cadera":      2,   # hip thrust + variante = OK, 3+ = redundancia
+    "sentadilla":         1,   # 1 sola sentadilla por día — fatiga cuádriceps (doc auditoría #8)
+    "bisagra_cadera":     2,
+    "press_horizontal":   2,
+    "press_inclinado":    1,   # variante del horizontal — no ambos en mismo día
+    "press_vertical":     1,
+    "jalon_vertical":     1,
+    "remo_horizontal":    2,
+    "curl_femoral":       1,
+    "patada_aislamiento": 2,
+    "abduccion":          1,
+    "biceps":             2,
+    "triceps":            2,
+    "core_estabilidad":   2,
+    "core_dinamico":      2,
+    "prensa":             1,   # 1 prensa por día — complementa sentadilla
+    "extension_cadera":   2,
+    "cardio":             1,   # siempre 1 solo al final
+}
+MAX_POR_PATRON_DEFAULT = 2
+
+
+
 CATALOGO_POR_ID = {ex["ejercicio_id"]: ex for ex in CATALOGO}
 
 def construir_prompt_semana(perfil: dict, num_semana: int) -> str:
@@ -208,66 +272,148 @@ TAREA: Genera la semana {num_semana} de 4 para este usuario.
 - Dias por semana: {dias} ({', '.join(dias_split)})
 - Ejercicios por dia: exactamente {ej}
 - Series/reps esta semana: {series_reps}
-- El ultimo ejercicio SIEMPRE es cardio (CAR_01 a CAR_10)
-- reps SIEMPRE como string: "15" "8-10" "45s"
+- El ultimo ejercicio SIEMPRE es cardio (CAR_01 a CAR_10) con series=1 y reps="20min"
+- Los ejercicios de fuerza usan reps como string: "15" "8-10"
+- El cardio SIEMPRE usa: series=1, reps="20min" (nunca series=3, nunca reps="45s")
 - Notas: maximo 5 palabras, sin comillas internas
 
 DIAS Y GRUPOS REQUERIDOS:
 {chr(10).join(f"  {d}: grupo={g}" for d,g in zip(dias_split, grupos_split))}
 
-FORMATO EXACTO DE RESPUESTA (JSON puro, sin texto antes ni despues):
+REGLAS DURAS (cada violacion es error):
+1. Maximo {ej} ejercicios por dia (incluyendo cardio)
+2. El ultimo ejercicio SIEMPRE es cardio: series=1, reps="20min"
+3. MAXIMO 2 ejercicios del mismo patron de movimiento por dia
+   - patron sentadilla: PIE_01 PIE_02 PIE_03 PIE_04 PIE_05 PIE_16 PIE_17 — max 1 por dia
+   - patron puente_cadera: GLU_01 GLU_02 GLU_03 GLU_04 GLU_20 — max 2 por dia
+   - patron bisagra_cadera: GLU_07 GLU_08 GLU_09 GLU_19 PIE_08 PIE_09 PIE_10 — max 1 por dia
+   - patron press_horizontal: EMP_01 EMP_02 EMP_03 — max 1 por dia
+   - patron jalon_vertical: TIR_01 TIR_02 TIR_03 TIR_15 — max 1 por dia
+4. Estructura por dia: 1 compuesto + 1-2 secundarios + 1 aislamiento + 1 cardio
+5. IDs de cardio disponibles: {' '.join(e['ejercicio_id'] for e in CATALOGO if e['grupo']=='cardio')}
+
+FORMATO EXACTO (SOLO JSON, nada mas):
 {{"semana":{num_semana},"dias":[{ejemplo_dia}]}}
 
-RESPONDE AHORA CON EL JSON:"""
+RESPONDE CON EL JSON:"""
 
 
 def validar_coherencia_dia(dia: dict) -> tuple[bool, str]:
     """
-    Validador fisiológico post-Gemini (auditoría #3 y #4).
-    Detecta redundancias biomecánicas que el LLM no controla.
-    LLM genera → Python arbitra.
+    Validador fisiológico + CORRECTOR automático (doc auditoría #8 + #9).
+    LLM genera → Python arbitra y CORRIGE en 3 capas:
+      1. Dedupe por ejercicio_id exacto (no repetir mismo ejercicio)
+      2. Dedupe por patrón biomecánico (MAX_POR_PATRON)
+      3. Dedupe por rol+grupo (no 2 "principal" del mismo grupo)
     """
+    from collections import defaultdict
+
     ejercicios = dia.get("ejercicios", [])
     if not ejercicios:
         return False, "Día sin ejercicios"
 
-    patrones = [patron_de(e.get("ejercicio_id","")) for e in ejercicios]
+    # ── Paso 1: Contar y CORREGIR redundancias por patrón ────────────────────
+    conteo_patron: dict   = defaultdict(int)
+    vistos_ids:    set    = set()            # dedupe exacto por ID
+    roles_grupo:   set    = set()            # dedupe por "principal del mismo grupo"
+    cardios = []
+    fuerza  = []
 
-    # Regla 1: No más de 2 ejercicios del mismo patrón por día
-    from collections import Counter
-    conteo = Counter(p for p in patrones if p not in ("cardio","desconocido"))
-    for patron, count in conteo.items():
-        if count >= 3:
-            return False, f"Redundancia biomecánica: {count}× {patron} el mismo día"
+    # Separar cardio de fuerza primero
+    for e in ejercicios:
+        eid = e.get("ejercicio_id", "")
+        if patron_de(eid) == "cardio" or eid.startswith("CAR_"):
+            cardios.append(e)
+        else:
+            fuerza.append(e)
 
-    # Regla 2: Cardio siempre al final (no antes del penúltimo ejercicio)
-    cardio_indices = [i for i, p in enumerate(patrones) if p == "cardio"]
-    if cardio_indices:
-        ultimo_cardio = max(cardio_indices)
-        if ultimo_cardio < len(patrones) - 2:
-            # Advertencia suave — no rechazar, solo loguear
-            logger.warning(f"Cardio no está al final del día {dia.get('dia','?')}")
+    # Filtrar ejercicios de fuerza en 3 capas
+    fuerza_filtrada = []
+    eliminados = []
+    for e in fuerza:
+        eid = e.get("ejercicio_id", "")
+        pat = patron_de(eid)
+        meta = CATALOGO_POR_ID.get(eid, {})
+        rol  = meta.get("rol", "aislamiento")
+        grp  = meta.get("grupo", "general")
 
-    # Regla 3: Al menos 1 compuesto (no solo aislamiento)
+        # Capa 1: dedupe exacto por ID
+        if eid in vistos_ids:
+            eliminados.append((eid, "duplicado exacto"))
+            continue
+        vistos_ids.add(eid)
+
+        # Capa 2: dedupe por patrón (MAX_POR_PATRON)
+        limite = MAX_POR_PATRON.get(pat, MAX_POR_PATRON_DEFAULT)
+        if conteo_patron[pat] >= limite:
+            eliminados.append((eid, f"patrón {pat} saturado ({limite})"))
+            continue
+        conteo_patron[pat] += 1
+
+        # Capa 3: dedupe principal por grupo
+        # No 2 ejercicios "principal" del mismo grupo en el mismo día
+        # (GLU_01 puente + GLU_03 hip thrust = mismo rol+grupo = 1 sobra)
+        rol_grp_key = f"{rol}_{grp}"
+        if rol == "principal" and rol_grp_key in roles_grupo:
+            # Degradar a secundario si hay espacio, si no eliminar
+            eliminados.append((eid, f"principal {grp} ya cubierto"))
+            continue
+        if rol == "principal":
+            roles_grupo.add(rol_grp_key)
+
+        fuerza_filtrada.append(e)
+
+    if eliminados:
+        logger.warning(f"Coherencia: {len(eliminados)} eliminados en {dia.get('dia','?')}: {[(e[0],e[1]) for e in eliminados]}")
+
+    if eliminados:
+        logger.warning(f"Coherencia: eliminados {len(eliminados)} ejercicios redundantes en {dia.get('dia','?')}: {eliminados}")
+
+    # ── Paso 2: Cardio siempre al final, máximo 1 ────────────────────────────
+    # Solo 1 cardio (el primero encontrado) al final
+    cardio_final = cardios[:1]
+
+    # ── Paso 3: Regla compuesto — garantizar al menos 1 ─────────────────────
     compuestos = {"sentadilla","prensa","bisagra_cadera","press_horizontal",
                   "press_inclinado","press_vertical","jalon_vertical","remo_horizontal",
-                  "puente_cadera","desplante"}
-    tiene_compuesto = any(p in compuestos for p in patrones)
-    if not tiene_compuesto and dia.get("grupo") not in ("cardio", "core"):
-        logger.warning(f"Día {dia.get('dia','?')} sin ejercicio compuesto — solo aislamiento")
+                  "puente_cadera","desplante","prensa"}
+    patrones_fuerza = [patron_de(e.get("ejercicio_id","")) for e in fuerza_filtrada]
+    if fuerza_filtrada and not any(p in compuestos for p in patrones_fuerza):
+        if dia.get("grupo") not in ("cardio","core"):
+            logger.warning(f"Día {dia.get('dia','?')} sin compuesto — solo aislamiento")
 
-    return True, "OK"
+    # ── Paso 4: Reordenar: fuerza (orden original filtrada) + cardio al final ─
+    # Renumerar orden
+    ejercicios_finales = fuerza_filtrada + cardio_final
+    for i, e in enumerate(ejercicios_finales, 1):
+        e["orden"] = i
+
+    dia["ejercicios"] = ejercicios_finales
+
+    msg = f"OK ({len(ejercicios_finales)} ejercicios, {len(eliminados)} redundantes eliminados)" if eliminados else "OK"
+    return True, msg
 
 
 def normalizar_ejercicio(e: dict) -> dict:
-    """Normaliza un ejercicio: nombre del catálogo, reps como string, notas saneadas."""
+    """Normaliza un ejercicio: nombre del catálogo, reps como string, notas saneadas.
+    Cardio: fuerza series=1 y reps en formato tiempo."""
     eid = str(e.get("ejercicio_id", ""))
     e["ejercicio"] = CATALOGO_POR_ID[eid]["nombre"]
-    e["reps"]      = str(e.get("reps", "10"))
+    es_cardio = eid.startswith("CAR_") or CATALOGO_POR_ID.get(eid, {}).get("grupo") == "cardio"
+    if es_cardio:
+        e["series"] = 1
+        reps_raw = str(e.get("reps", "20min"))
+        # Normalizar a formato minutos: "45s" → "20min", "3" → "20min", "20min" → "20min"
+        if "min" not in reps_raw:
+            e["reps"] = "20min"
+        else:
+            e["reps"] = reps_raw
+    else:
+        e["reps"] = str(e.get("reps", "10"))
+        try:    e["series"] = int(e.get("series", 3))
+        except: e["series"] = 3
     nota = str(e.get("notas", "")).replace('"','').replace("'",'').strip()[:60]
-    e["notas"]  = nota
-    try:    e["series"] = int(e.get("series", 3))
-    except: e["series"] = 3
+    e["notas"] = nota
     return e
 
 
@@ -653,6 +799,22 @@ def init_db():
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )""")
 
+    # Usuarios con acceso al bot (fuente de verdad en DB, no hardcode)
+    cur.execute("""CREATE TABLE IF NOT EXISTS usuarios_permitidos (
+        user_id INTEGER PRIMARY KEY,
+        nombre  TEXT,
+        rol     TEXT DEFAULT 'user',
+        alta_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
+
+    # Seed: insertar usuarios hardcodeados si no existen
+    for uid, nombre in [(1557254587, "admin"), (8468355326, "esposa")]:
+        cur.execute("""
+            INSERT OR IGNORE INTO usuarios_permitidos (user_id, nombre, rol)
+            VALUES (?, ?, 'user')
+        """, (uid, nombre))
+    conn.commit()
+
     # NUEVA: historial de swaps para persistencia entre semanas
     cur.execute("""CREATE TABLE IF NOT EXISTS swaps (
         user_id INTEGER,
@@ -674,6 +836,10 @@ def init_db():
         ("v1", "ALTER TABLE swaps ADD COLUMN rol TEXT"),
         ("v2", "ALTER TABLE perfil_usuario ADD COLUMN genero TEXT DEFAULT 'mujer'"),
         ("v3", "ALTER TABLE rutinas ADD COLUMN patron TEXT"),
+        ("v4", """CREATE TABLE IF NOT EXISTS usuarios_permitidos (
+            user_id INTEGER PRIMARY KEY, nombre TEXT,
+            rol TEXT DEFAULT 'user', alta_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )"""),
     ]
     for version, sql in migraciones:
         try:
@@ -1162,9 +1328,16 @@ def obtener_rutina_interactiva(user_id: int, semana: int, dia: str):
     keyboard = []
     for idx_ex, ex in enumerate(ejercicios, 1):
         estado = "✅" if ex['completado'] else "⬜"
+        eid = ex['ejercicio_id']
+        es_cardio = eid.startswith("CAR_") or ex['grupo'] == "cardio"
         html_msg += f"\n{estado} <b>{idx_ex}. {safe(ex['ejercicio'])}</b>\n"
-        html_msg += f"   📌 {ex['series']} series × <b>{safe(ex['reps'])}</b> reps\n"
-        if ex['notas']:
+        if es_cardio:
+            # Cardio siempre en minutos, no series×reps
+            tiempo = safe(ex['reps']) if "min" in str(ex['reps']) else "20min"
+            html_msg += f"   ⏱ <b>{tiempo}</b> · ritmo moderado constante\n"
+        else:
+            html_msg += f"   📌 {ex['series']} series × <b>{safe(ex['reps'])}</b> reps\n"
+        if ex['notas'] and not es_cardio:
             html_msg += f"   💡 <i>{safe(ex['notas'])}</i>\n"
         keyboard.append([
             InlineKeyboardButton(
@@ -1223,9 +1396,15 @@ def formatear_plan_por_semanas(user_id: int) -> list[str]:
             grupo = ejercicios[0]["grupo"].upper() if ejercicios else ""
             txt += f"<b>{dia_nombre.capitalize()}</b> · <i>{grupo}</i>\n"
             for e in ejercicios:
-                txt += f"  • {safe(e['ejercicio'])} — {e['series']}×{e['reps']}\n"
-                if e["notas"]:
-                    txt += f"    <i>💡 {safe(e['notas'])}</i>\n"
+                eid = e["ejercicio_id"] if "ejercicio_id" in e.keys() else ""
+                es_c = str(eid).startswith("CAR_") or e["grupo"] in ("cardio",)
+                if es_c:
+                    t = e["reps"] if "min" in str(e["reps"]) else "20min"
+                    txt += f"  🏃 {safe(e['ejercicio'])} — {t}\n"
+                else:
+                    txt += f"  • {safe(e['ejercicio'])} — {e['series']}×{e['reps']}\n"
+                    if e["notas"]:
+                        txt += f"    <i>💡 {safe(e['notas'])}</i>\n"
             txt += "\n"
         paginas.append(txt)
 
@@ -1392,6 +1571,30 @@ async def gemini_coach_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     except Exception:
         logger.exception("Error en coach conversacional")
         await update.message.reply_text("Descansa un poco, usa el menú ❤️")
+
+async def adduser_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: añadir usuario sin redeploy. Uso: /adduser 123456789"""
+    if update.effective_user.id != 1557254587:
+        if update.message:
+            await update.message.reply_text("⛔ Solo el admin puede añadir usuarios.")
+        return
+    args = context.args
+    if not args or not args[0].isdigit():
+        await update.message.reply_text("Uso: /adduser <ID_TELEGRAM>\nEjemplo: /adduser 8468355326")
+        return
+    nuevo_id = int(args[0])
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
+        cur  = conn.cursor()
+        cur.execute("INSERT OR IGNORE INTO usuarios_permitidos (user_id, rol) VALUES (?, 'user')", (nuevo_id,))
+        conn.commit()
+        conn.close()
+        ALLOWED_USERS.add(nuevo_id)
+        await update.message.reply_text(f"✅ Usuario {nuevo_id} añadido con éxito.")
+        logger.info(f"Admin añadió usuario {nuevo_id}")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+
 
 async def reset_plan_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Borra plan y progreso. Conserva los swaps del usuario (preferencias)."""
@@ -1912,6 +2115,7 @@ def main():
     app.add_handler(CommandHandler("plan",         plan_handler))
     app.add_handler(CommandHandler("reset_plan",   reset_plan_handler))
     app.add_handler(CommandHandler("reset_swaps",  reset_swaps_handler))
+    app.add_handler(CommandHandler("adduser",    adduser_handler))
     app.add_handler(CallbackQueryHandler(callback_router))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, gemini_coach_handler))
     app.add_error_handler(error_handler)
