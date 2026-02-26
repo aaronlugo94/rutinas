@@ -38,7 +38,7 @@ def cargar_usuarios_permitidos():
         logger.info(f"Usuarios permitidos cargados: {ALLOWED_USERS}")
     except Exception as e:
         # Si falla, usar hardcode como fallback de seguridad
-        ALLOWED_USERS = {1557254587, 8468355326}
+        ALLOWED_USERS = {1557254587, 8468355326,1557254587}
         logger.warning(f"Fallback hardcode ALLOWED_USERS: {e}")
 DB_PATH = Path("/app/data/rutinas.db")
 
