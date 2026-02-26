@@ -18,7 +18,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 # Silenciar loggers verbosos que no aportan valor
 logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING) 
 logging.getLogger("telegram.ext").setLevel(logging.WARNING)
 logging.getLogger("google.auth").setLevel(logging.WARNING)
 
@@ -38,7 +38,7 @@ def cargar_usuarios_permitidos():
         logger.info(f"Usuarios permitidos cargados: {ALLOWED_USERS}")
     except Exception as e:
         # Si falla, usar hardcode como fallback de seguridad
-        ALLOWED_USERS = {1557254587, 8468355326,1557254587}
+        ALLOWED_USERS = {1557254587, 8468355326}
         logger.warning(f"Fallback hardcode ALLOWED_USERS: {e}")
 DB_PATH = Path("/app/data/rutinas.db")
 
@@ -228,13 +228,31 @@ def construir_prompt_semana(perfil: dict, num_semana: int) -> str:
     dur   = int(perfil.get("duracion_min", 60))
     lim   = perfil.get("limitaciones", "ninguna")
     genero = perfil.get("genero", "mujer")
-    ej    = 3 if dur<=45 else (4 if dur<=60 else (5 if dur<=75 else 6))
+    ej    = 4 if dur<=60 else 5  # mínimo 4 fuerza + 1 cardio siempre
 
     # Progresión por semana
+    # Series se ajustan por volumen elegido (dur=tiempo como proxy de volumen)
+    # Estructura: series_base = según duración, reps = según semana/nivel
+    s = 3 if dur <= 60 else (4 if dur <= 75 else 5)  # series base por ejercicio
     prog = {
-        "principiante": {1:"3 series x 15 reps",2:"3 series x 12 reps",3:"3 series x 10 reps",4:"4 series x 8 reps"},
-        "intermedio":   {1:"4 series x 12 reps",2:"4 series x 8-10 reps",3:"4 series x 6-8 reps",4:"3 series x 12 reps DELOAD"},
-        "avanzado":     {1:"5 series x 3-5 reps",2:"4 series x 8-10 reps",3:"3 series x 12-15 reps",4:"3 series x 8 reps DELOAD"},
+        "principiante": {
+            1: f"{s} series x 15 reps — RIR 4 (técnica > carga)",
+            2: f"{s} series x 12 reps — RIR 3 (+5% carga vs S1)",
+            3: f"{s} series x 10 reps — RIR 2 (variantes más libres)",
+            4: f"{s} series x 8 reps  — RIR 1 (máxima carga del bloque)",
+        },
+        "intermedio": {
+            1: f"{s} series x 12 reps — RIR 3 (hipertrofia metabólica)",
+            2: f"{s} series x 8-10 reps — RIR 2 (mecánica +carga)",
+            3: f"{s} series x 6-8 reps  — RIR 1 (fuerza-hipertrofia)",
+            4: f"{max(2,s-1)} series x 12 reps — RIR 4 DELOAD (60% carga)",
+        },
+        "avanzado": {
+            1: f"{s} series x 3-5 reps  — RIR 0 (solo compuestos pesados)",
+            2: f"{s} series x 8-10 reps — RIR 1 (tempo 2-1-2)",
+            3: f"{s} series x 12-15 reps — RIR 2 (congestión y aislamiento)",
+            4: f"{max(2,s-1)} series x 8 reps — RIR 3 DELOAD (50% carga)",
+        },
     }
     series_reps = prog.get(nivel, prog["principiante"])[num_semana]
 
@@ -280,17 +298,26 @@ TAREA: Genera la semana {num_semana} de 4 para este usuario.
 DIAS Y GRUPOS REQUERIDOS:
 {chr(10).join(f"  {d}: grupo={g}" for d,g in zip(dias_split, grupos_split))}
 
-REGLAS DURAS (cada violacion es error):
-1. Maximo {ej} ejercicios por dia (incluyendo cardio)
-2. El ultimo ejercicio SIEMPRE es cardio: series=1, reps="20min"
-3. MAXIMO 2 ejercicios del mismo patron de movimiento por dia
-   - patron sentadilla: PIE_01 PIE_02 PIE_03 PIE_04 PIE_05 PIE_16 PIE_17 — max 1 por dia
-   - patron puente_cadera: GLU_01 GLU_02 GLU_03 GLU_04 GLU_20 — max 2 por dia
-   - patron bisagra_cadera: GLU_07 GLU_08 GLU_09 GLU_19 PIE_08 PIE_09 PIE_10 — max 1 por dia
-   - patron press_horizontal: EMP_01 EMP_02 EMP_03 — max 1 por dia
-   - patron jalon_vertical: TIR_01 TIR_02 TIR_03 TIR_15 — max 1 por dia
-4. Estructura por dia: 1 compuesto + 1-2 secundarios + 1 aislamiento + 1 cardio
-5. IDs de cardio disponibles: {' '.join(e['ejercicio_id'] for e in CATALOGO if e['grupo']=='cardio')}
+CONTRATO DE SESION (no negociable):
+
+ESTRUCTURA OBLIGATORIA POR DIA (independiente del tiempo):
+  1 ejercicio PRINCIPAL (compuesto pesado — rol=principal)
+  1-2 ejercicios SECUNDARIOS (apoyo al principal — rol=secundario)
+  1 ejercicio AISLAMIENTO (finalizar el grupo — rol=aislamiento)
+  1 CARDIO al final (series=1, reps="20min")
+  TOTAL: exactamente {ej} ejercicios de fuerza + 1 cardio = {ej+1} total
+
+EL TIEMPO SOLO AJUSTA: series (reducir de 4 a 3 si hay poco tiempo)
+EL TIEMPO NUNCA ELIMINA: patrones de movimiento, aislamientos, ni el cardio
+
+REGLAS DE PATRON (el backend rechaza violaciones):
+  - Max 1 sentadilla por dia (PIE_01 PIE_02 PIE_03 PIE_16)
+  - Max 1 bisagra de cadera por dia (GLU_07 GLU_08 PIE_08 PIE_09)
+  - Max 2 puente_cadera por dia (GLU_01 GLU_02 GLU_03 GLU_04)
+  - Max 1 press_horizontal por dia (EMP_01 EMP_02 EMP_03)
+  - Max 1 jalon_vertical por dia (TIR_01 TIR_02 TIR_03)
+
+CARDIO: IDs disponibles: {' '.join(e['ejercicio_id'] for e in CATALOGO if e['grupo']=='cardio')}
 
 FORMATO EXACTO (SOLO JSON, nada mas):
 {{"semana":{num_semana},"dias":[{ejemplo_dia}]}}
@@ -516,11 +543,16 @@ def parsear_semana_json(raw: str, num_semana: int) -> tuple:
             if not ejercicios_validos:
                 return None, f"Día {d.get('dia','?')} sin ejercicios válidos"
 
-            # Validación fisiológica — LLM genera, Python arbitra
+            # Validación fisiológica — LLM genera, Python arbitra y CORRIGE
             coherente, motivo = validar_coherencia_dia(d)
             if not coherente:
-                logger.warning(f"Coherencia fallida semana {num_semana}: {motivo}")
-                # No rechazar — continuar con advertencia (mejor plan imperfecto que sin plan)
+                logger.warning(f"Coherencia fallida S{num_semana}: {motivo}")
+
+            # Mínimo no negociable: 3 fuerza por día (doc auditoría #10)
+            n_fuerza = sum(1 for e in d["ejercicios"]
+                          if not e.get("ejercicio_id","").startswith("CAR_"))
+            if n_fuerza < 3:
+                return None, f"Día {d.get('dia','?')} insuficiente: {n_fuerza} ejercicios (mín 3)"
 
         data["semana"] = num_semana
         return data, None
@@ -542,16 +574,19 @@ def construir_system_prompt(perfil: dict) -> str:
     dur   = int(perfil.get("duracion_min", 60))
     lim   = perfil.get("limitaciones", "ninguna")
 
-    # Ejercicios por sesión: calibrado para tiempo real de gym
-    # Nippard: calidad > cantidad, pero avanzados necesitan más volumen (Schoenfeld 2017)
+    # ESTRUCTURA MÍNIMA NO NEGOCIABLE (doc auditoría #10)
+    # El tiempo NO define cuántos ejercicios — define series y descansos
+    # Mínimo 4 ejercicios de fuerza + 1 cardio = 5 totales, siempre
+    # "El tiempo solo recorta series acccesorias, nunca el esqueleto"
     if dur <= 45:
-        ej = 3   # 45min: 3 trabajos + cardio = sesión completa
+        ej = 4   # 45min: 4 ejercicios con series reducidas (2-3 series)
     elif dur <= 60:
-        ej = 4   # 60min: estándar científico óptimo
+        ej = 4   # 60min: estándar — 4 ejercicios 3-4 series
     elif dur <= 75:
-        ej = 5   # 75min: intermedio-avanzado
+        ej = 5   # 75min: + 1 aislamiento adicional
     else:
-        ej = 6   # 90min: volumen completo para avanzados (Krieger: 10-20 series/grupo)
+        ej = 5   # 90min: volumen máximo con 5 ejercicios bien cargados + cardio
+    # Nota: el cardio siempre es +1 (no cuenta en este número)
 
     # ── SPLIT CIENTÍFICO ──────────────────────────────────────────────────────
     # Principio: frecuencia 2x/semana por grupo = superior a 1x (Schoenfeld 2016 meta-análisis)
@@ -1791,15 +1826,15 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """, (user_id, lim))
         conn_l.commit()
         conn_l.close()
-        # Paso 4: duración de sesión
+        # Paso 4: volumen de entrenamiento (rediseñado — el tiempo no recorta la estructura)
         teclado = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⚡ 45 min (sesiones cortas e intensas)", callback_data="dur:45")],
-            [InlineKeyboardButton("⏱ 60 min (estándar recomendado)",       callback_data="dur:60")],
-            [InlineKeyboardButton("🏋 90 min (tengo tiempo de sobra)",      callback_data="dur:90")],
+            [InlineKeyboardButton("🎯 Sesión enfocada  — 4 ejercicios · 3 series",   callback_data="dur:60")],
+            [InlineKeyboardButton("💪 Sesión completa — 5 ejercicios · 4 series",    callback_data="dur:75")],
+            [InlineKeyboardButton("🔥 Sesión de volumen — 5 ejercicios · 5 series",  callback_data="dur:90")],
         ])
         await query.edit_message_text(
-            "✅ Listo.\n\n<b>Paso 5/6</b> — ¿Cuánto tiempo tienes disponible por sesión?\n"
-            "<i>Esto define cuántos ejercicios incluir. Sé realista.</i>",
+            "✅ Listo.\n\n<b>Paso 5/6</b> — ¿Qué volumen quieres por sesión?\n"
+            "<i>Todas incluyen los ejercicios clave. Solo cambian las series.</i>",
             reply_markup=teclado, parse_mode="HTML"
         )
         return
@@ -1941,7 +1976,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Ensamblar plan completo e insertar en DB
         plan_completo = {"semanas": semanas_json}
-        ej_calculado = 3 if duracion_min<=45 else (4 if duracion_min<=60 else (5 if duracion_min<=75 else 6))
+        ej_calculado = 4 if duracion_min<=60 else 5  # mínimo 4 fuerza siempre
         exito, msj = sanitizar_e_insertar_plan(
             json.dumps(plan_completo), user_id, ej_por_dia=ej_calculado
         )
