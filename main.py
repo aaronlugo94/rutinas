@@ -24,7 +24,7 @@ logging.getLogger("google.auth").setLevel(logging.WARNING)
 
 # ALLOWED_USERS ya no es hardcode — la fuente de verdad es la tabla usuarios_permitidos
 # Mantenemos el set como cache en memoria para arranque rápido (se llena desde DB)
-ALLOWED_USERS: set = set(1557254587)
+ALLOWED_USERS: set = set()
 
 def cargar_usuarios_permitidos():
     """Carga desde DB los usuarios con acceso. Llamar en init."""
