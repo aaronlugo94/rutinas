@@ -18,7 +18,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 # Silenciar loggers verbosos que no aportan valor
 logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("httpcore").setLevel(logging.WARNING) 
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("telegram.ext").setLevel(logging.WARNING)
 logging.getLogger("google.auth").setLevel(logging.WARNING)
 
@@ -161,7 +161,8 @@ VALID_IDS  = {ex["ejercicio_id"] for ex in CATALOGO}
 
 # ── PATRONES BIOMECÁNICOS (auditoría #3 — validación fisiológica post-Gemini) ──
 # Permite detectar: 3 bisagras el mismo día, cardio antes del ejercicio 3, etc.
-PATRON_POR_ID = {"GLU_01": "puente_cadera", "GLU_02": "puente_cadera", "GLU_03": "puente_cadera", "GLU_04": "puente_cadera", "GLU_05": "sentadilla", "GLU_06": "sentadilla", "GLU_07": "bisagra_cadera", "GLU_08": "bisagra_cadera", "GLU_09": "bisagra_cadera", "GLU_10": "patada_aislamiento", "GLU_11": "patada_aislamiento", "GLU_12": "patada_aislamiento", "GLU_13": "abduccion", "GLU_14": "abduccion", "GLU_15": "extension_cadera", "GLU_16": "extension_cadera", "GLU_17": "sentadilla", "GLU_18": "patada_aislamiento", "GLU_19": "bisagra_cadera", "GLU_20": "puente_cadera", "PIE_01": "sentadilla", "PIE_02": "sentadilla", "PIE_03": "sentadilla", "PIE_04": "sentadilla", "PIE_05": "sentadilla", "PIE_06": "prensa", "PIE_07": "prensa", "PIE_08": "bisagra_cadera", "PIE_09": "bisagra_cadera", "PIE_10": "bisagra_cadera", "PIE_11": "curl_femoral", "PIE_12": "curl_femoral", "PIE_13": "curl_femoral", "PIE_14": "desplante", "PIE_15": "desplante", "PIE_16": "sentadilla", "PIE_17": "sentadilla", "EMP_01": "press_horizontal", "EMP_02": "press_horizontal", "EMP_03": "press_horizontal", "EMP_04": "press_inclinado", "EMP_05": "press_inclinado", "EMP_06": "press_vertical", "EMP_07": "press_vertical", "EMP_08": "press_vertical", "EMP_09": "aislamiento_pecho", "EMP_10": "aislamiento_pecho", "EMP_11": "triceps", "EMP_12": "triceps", "EMP_13": "triceps", "EMP_14": "triceps", "EMP_15": "core_dinamico", "EMP_16": "core_estabilidad", "EMP_17": "core_estabilidad", "EMP_18": "core_estabilidad", "TIR_01": "jalon_vertical", "TIR_02": "jalon_vertical", "TIR_03": "jalon_vertical", "TIR_04": "remo_horizontal", "TIR_05": "remo_horizontal", "TIR_06": "remo_horizontal", "TIR_07": "remo_horizontal", "TIR_08": "biceps", "TIR_09": "biceps", "TIR_10": "biceps", "TIR_11": "biceps", "TIR_12": "hombro_posterior", "TIR_13": "hombro_posterior", "TIR_14": "remo_horizontal", "TIR_15": "jalon_vertical", "COR_01": "core_estabilidad", "COR_02": "core_estabilidad", "COR_03": "core_estabilidad", "COR_04": "core_dinamico", "COR_05": "core_dinamico", "COR_06": "core_rotacion", "COR_07": "core_estabilidad", "COR_08": "core_dinamico", "CAR_01": "cardio", "CAR_02": "cardio", "CAR_03": "cardio", "CAR_04": "cardio", "CAR_05": "cardio", "CAR_06": "cardio", "CAR_07": "cardio", "CAR_08": "cardio", "CAR_09": "cardio", "CAR_10": "cardio", "CAR_11": "cardio"}
+PATRON_POR_ID = {"GLU_01": "puente_cadera", "GLU_02": "puente_cadera", "GLU_03": "puente_cadera", "GLU_04": "puente_cadera", "GLU_05": "sentadilla", "GLU_06": "sentadilla", "GLU_07": "bisagra_cadera", "GLU_08": "bisagra_cadera", "GLU_09": "bisagra_cadera", "GLU_10": "patada_aislamiento", "GLU_11": "patada_aislamiento", "GLU_12": "patada_aislamiento", "GLU_13": "abduccion", "GLU_14": "abduccion", "GLU_15": "extension_cadera", "GLU_16": "extension_cadera", "GLU_17": "sentadilla", "GLU_18": "patada_aislamiento", "GLU_19": "bisagra_cadera", "GLU_20": "puente_cadera", "PIE_01": "sentadilla", "PIE_02": "sentadilla", "PIE_03": "sentadilla", "PIE_04": "sentadilla", "PIE_05": "sentadilla", "PIE_06": "prensa", "PIE_07": "prensa", "PIE_08": "bisagra_cadera", "PIE_09": "bisagra_cadera", "PIE_10": "bisagra_cadera", "PIE_11": "curl_femoral", "PIE_12": "curl_femoral", "PIE_13": "curl_femoral", "PIE_14": "desplante", "PIE_15": "desplante", "PIE_16": "sentadilla", "PIE_17": "sentadilla",
+    "PIE_19": "desplante", "EMP_01": "press_horizontal", "EMP_02": "press_horizontal", "EMP_03": "press_horizontal", "EMP_04": "press_inclinado", "EMP_05": "press_inclinado", "EMP_06": "press_vertical", "EMP_07": "press_vertical", "EMP_08": "press_vertical", "EMP_09": "aislamiento_pecho", "EMP_10": "aislamiento_pecho", "EMP_11": "triceps", "EMP_12": "triceps", "EMP_13": "triceps", "EMP_14": "triceps", "EMP_15": "core_dinamico", "EMP_16": "core_estabilidad", "EMP_17": "core_estabilidad", "EMP_18": "core_estabilidad", "EMP_19": "press_vertical", "TIR_01": "jalon_vertical", "TIR_02": "jalon_vertical", "TIR_03": "jalon_vertical", "TIR_04": "remo_horizontal", "TIR_05": "remo_horizontal", "TIR_06": "remo_horizontal", "TIR_07": "remo_horizontal", "TIR_08": "biceps", "TIR_09": "biceps", "TIR_10": "biceps", "TIR_11": "biceps", "TIR_12": "hombro_posterior", "TIR_13": "hombro_posterior", "TIR_14": "remo_horizontal", "TIR_15": "jalon_vertical", "COR_01": "core_estabilidad", "COR_02": "core_estabilidad", "COR_03": "core_estabilidad", "COR_04": "core_dinamico", "COR_05": "core_dinamico", "COR_06": "core_rotacion", "COR_07": "core_estabilidad", "COR_08": "core_dinamico", "CAR_01": "cardio", "CAR_02": "cardio", "CAR_03": "cardio", "CAR_04": "cardio", "CAR_05": "cardio", "CAR_06": "cardio", "CAR_07": "cardio", "CAR_08": "cardio", "CAR_09": "cardio", "CAR_10": "cardio", "CAR_11": "cardio"}
 
 def patron_de(ej_id: str) -> str:
     """Devuelve el patrón biomecánico de un ejercicio, o 'desconocido'."""
@@ -228,12 +229,16 @@ def construir_prompt_semana(perfil: dict, num_semana: int) -> str:
     dur   = int(perfil.get("duracion_min", 60))
     lim   = perfil.get("limitaciones", "ninguna")
     genero = perfil.get("genero", "mujer")
-    ej    = 4 if dur<=60 else 5  # mínimo 4 fuerza + 1 cardio siempre
+    ej    = 5  # estructura científica: 4 fuerza + 1 cardio siempre
 
     # Progresión por semana
     # Series se ajustan por volumen elegido (dur=tiempo como proxy de volumen)
     # Estructura: series_base = según duración, reps = según semana/nivel
-    s = 3 if dur <= 60 else (4 if dur <= 75 else 5)  # series base por ejercicio
+    # Series según nivel — la ciencia decide, no el usuario (doc #10)
+    # Principiante: 3 series (volumen moderado, técnica primero)
+    # Intermedio: 4 series (volumen óptimo para hipertrofia — Schoenfeld 2017)
+    # Avanzado: 5 series (alto volumen, necesario para progreso — Krieger 2010)
+    s = {"principiante": 3, "intermedio": 4, "avanzado": 5}.get(nivel, 4)
     prog = {
         "principiante": {
             1: f"{s} series x 15 reps — RIR 4 (técnica > carga)",
@@ -377,16 +382,15 @@ def validar_coherencia_dia(dia: dict) -> tuple[bool, str]:
             continue
         conteo_patron[pat] += 1
 
-        # Capa 3: dedupe principal por grupo
-        # No 2 ejercicios "principal" del mismo grupo en el mismo día
-        # (GLU_01 puente + GLU_03 hip thrust = mismo rol+grupo = 1 sobra)
-        rol_grp_key = f"{rol}_{grp}"
-        if rol == "principal" and rol_grp_key in roles_grupo:
-            # Degradar a secundario si hay espacio, si no eliminar
-            eliminados.append((eid, f"principal {grp} ya cubierto"))
+        # Capa 3: dedupe principal por PATRON biomecánico (no por grupo)
+        # "principal empuje" es demasiado amplio — press pecho ≠ press hombro
+        # Usar patron para discriminar: press_horizontal ≠ press_vertical ≠ press_inclinado
+        pat_key = f"principal_{pat}" if rol == "principal" else None
+        if pat_key and pat_key in roles_grupo:
+            eliminados.append((eid, f"patrón {pat} principal ya cubierto"))
             continue
-        if rol == "principal":
-            roles_grupo.add(rol_grp_key)
+        if pat_key:
+            roles_grupo.add(pat_key)
 
         fuerza_filtrada.append(e)
 
@@ -578,15 +582,10 @@ def construir_system_prompt(perfil: dict) -> str:
     # El tiempo NO define cuántos ejercicios — define series y descansos
     # Mínimo 4 ejercicios de fuerza + 1 cardio = 5 totales, siempre
     # "El tiempo solo recorta series acccesorias, nunca el esqueleto"
-    if dur <= 45:
-        ej = 4   # 45min: 4 ejercicios con series reducidas (2-3 series)
-    elif dur <= 60:
-        ej = 4   # 60min: estándar — 4 ejercicios 3-4 series
-    elif dur <= 75:
-        ej = 5   # 75min: + 1 aislamiento adicional
-    else:
-        ej = 5   # 90min: volumen máximo con 5 ejercicios bien cargados + cardio
-    # Nota: el cardio siempre es +1 (no cuenta en este número)
+    # Ejercicios por sesión: 5 siempre (estructura científica no negociable)
+    # 1 principal + 2 secundarios + 1 aislamiento + 1 cardio
+    # Basado en: Schoenfeld (2017) 10-20 series/grupo/semana óptimo para hipertrofia
+    ej = 5  # estructura fija de calidad — ni más ni menos
 
     # ── SPLIT CIENTÍFICO ──────────────────────────────────────────────────────
     # Principio: frecuencia 2x/semana por grupo = superior a 1x (Schoenfeld 2016 meta-análisis)
@@ -1323,6 +1322,7 @@ def obtener_rutina_interactiva(user_id: int, semana: int, dia: str):
     cur = conn.cursor()
     cur.execute("""
         SELECT r.ejercicio_id, r.ejercicio, r.series, r.reps, r.notas,
+               r.grupo,
                COALESCE(p.completado, 0) as completado
         FROM rutinas r
         LEFT JOIN progreso p
@@ -1364,7 +1364,10 @@ def obtener_rutina_interactiva(user_id: int, semana: int, dia: str):
     for idx_ex, ex in enumerate(ejercicios, 1):
         estado = "✅" if ex['completado'] else "⬜"
         eid = ex['ejercicio_id']
-        es_cardio = eid.startswith("CAR_") or ex['grupo'] == "cardio"
+        # Detectar cardio: por ID o por grupo (defensivo ante datos viejos con grupo=NULL)
+        es_cardio = (eid.startswith("CAR_") or 
+                     PATRON_POR_ID.get(eid, "") == "cardio" or
+                     str(ex['grupo'] if 'grupo' in ex.keys() else '').lower() == 'cardio')
         html_msg += f"\n{estado} <b>{idx_ex}. {safe(ex['ejercicio'])}</b>\n"
         if es_cardio:
             # Cardio siempre en minutos, no series×reps
@@ -1826,45 +1829,35 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """, (user_id, lim))
         conn_l.commit()
         conn_l.close()
-        # Paso 4: volumen de entrenamiento (rediseñado — el tiempo no recorta la estructura)
+        # Paso 5/5: días por semana — directo, sin preguntar volumen
         teclado = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🎯 Sesión enfocada  — 4 ejercicios · 3 series",   callback_data="dur:60")],
-            [InlineKeyboardButton("💪 Sesión completa — 5 ejercicios · 4 series",    callback_data="dur:75")],
-            [InlineKeyboardButton("🔥 Sesión de volumen — 5 ejercicios · 5 series",  callback_data="dur:90")],
+            [InlineKeyboardButton("3️⃣  3 días — recuperación máxima",  callback_data="dias:3")],
+            [InlineKeyboardButton("4️⃣  4 días — balance óptimo",       callback_data="dias:4")],
+            [InlineKeyboardButton("5️⃣  5 días — volumen avanzado",     callback_data="dias:5")],
         ])
         await query.edit_message_text(
-            "✅ Listo.\n\n<b>Paso 5/6</b> — ¿Qué volumen quieres por sesión?\n"
-            "<i>Todas incluyen los ejercicios clave. Solo cambian las series.</i>",
+            "✅ Listo.\n\n<b>Paso 5/5</b> — ¿Cuántos días por semana entrenas?\n"
+            "<i>Más días = más volumen semanal. 4 días consistentes supera 5 irregulares.</i>",
             reply_markup=teclado, parse_mode="HTML"
         )
         return
 
     # ── DURACIÓN DE SESIÓN ────────────────────────────────────────────
     if data.startswith("dur:"):
+        # Legado: guardar 75min como default y continuar a días
         await query.answer()
-        dur = int(data.split(":")[1])
-        conn = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
-        cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO perfil_usuario (user_id, duracion_min)
-            VALUES (?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET duracion_min = excluded.duracion_min, updated_at = CURRENT_TIMESTAMP
-        """, (user_id, dur))
-        conn.commit()
-        conn.close()
-        # Paso 5: días por semana
         teclado = InlineKeyboardMarkup([
-            [InlineKeyboardButton("3 días a la semana", callback_data="dias:3")],
-            [InlineKeyboardButton("4 días a la semana", callback_data="dias:4")],
-            [InlineKeyboardButton("5 días a la semana", callback_data="dias:5")],
+            [InlineKeyboardButton("3️⃣  3 días — recuperación máxima",  callback_data="dias:3")],
+            [InlineKeyboardButton("4️⃣  4 días — balance óptimo",       callback_data="dias:4")],
+            [InlineKeyboardButton("5️⃣  5 días — volumen avanzado",     callback_data="dias:5")],
         ])
         await query.edit_message_text(
-            "✅ Tiempo registrado.\n\n<b>Paso 6/6</b> — ¿Cuántos días por semana puedes entrenar?\n"
-            "<i>Recuerda: consistencia > frecuencia. 3 días bien hechos > 5 a medias.</i>",
+            "✅ Guardado.\n\n<b>Paso 5/5</b> — ¿Cuántos días por semana?",
             reply_markup=teclado, parse_mode="HTML"
         )
         return
 
+    
     # ── SELECCIÓN DE DÍAS → GENERA PLAN ──────────────────────────────
     if data.startswith("dias:"):
         await query.answer()
@@ -1976,7 +1969,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Ensamblar plan completo e insertar en DB
         plan_completo = {"semanas": semanas_json}
-        ej_calculado = 4 if duracion_min<=60 else 5  # mínimo 4 fuerza siempre
+        ej_calculado = 5  # estructura científica fija
         exito, msj = sanitizar_e_insertar_plan(
             json.dumps(plan_completo), user_id, ej_por_dia=ej_calculado
         )
