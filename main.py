@@ -162,11 +162,268 @@ VALID_IDS  = {ex["ejercicio_id"] for ex in CATALOGO}
 # ── PATRONES BIOMECÁNICOS (auditoría #3 — validación fisiológica post-Gemini) ──
 # Permite detectar: 3 bisagras el mismo día, cardio antes del ejercicio 3, etc.
 PATRON_POR_ID = {"GLU_01": "puente_cadera", "GLU_02": "puente_cadera", "GLU_03": "puente_cadera", "GLU_04": "puente_cadera", "GLU_05": "sentadilla", "GLU_06": "sentadilla", "GLU_07": "bisagra_cadera", "GLU_08": "bisagra_cadera", "GLU_09": "bisagra_cadera", "GLU_10": "patada_aislamiento", "GLU_11": "patada_aislamiento", "GLU_12": "patada_aislamiento", "GLU_13": "abduccion", "GLU_14": "abduccion", "GLU_15": "extension_cadera", "GLU_16": "extension_cadera", "GLU_17": "sentadilla", "GLU_18": "patada_aislamiento", "GLU_19": "bisagra_cadera", "GLU_20": "puente_cadera", "PIE_01": "sentadilla", "PIE_02": "sentadilla", "PIE_03": "sentadilla", "PIE_04": "sentadilla", "PIE_05": "sentadilla", "PIE_06": "prensa", "PIE_07": "prensa", "PIE_08": "bisagra_cadera", "PIE_09": "bisagra_cadera", "PIE_10": "bisagra_cadera", "PIE_11": "curl_femoral", "PIE_12": "curl_femoral", "PIE_13": "curl_femoral", "PIE_14": "desplante", "PIE_15": "desplante", "PIE_16": "sentadilla", "PIE_17": "sentadilla",
-    "PIE_19": "desplante", "EMP_01": "press_horizontal", "EMP_02": "press_horizontal", "EMP_03": "press_horizontal", "EMP_04": "press_inclinado", "EMP_05": "press_inclinado", "EMP_06": "press_vertical", "EMP_07": "press_vertical", "EMP_08": "press_vertical", "EMP_09": "aislamiento_pecho", "EMP_10": "aislamiento_pecho", "EMP_11": "triceps", "EMP_12": "triceps", "EMP_13": "triceps", "EMP_14": "triceps", "EMP_15": "core_dinamico", "EMP_16": "core_estabilidad", "EMP_17": "core_estabilidad", "EMP_18": "core_estabilidad", "EMP_19": "press_vertical", "TIR_01": "jalon_vertical", "TIR_02": "jalon_vertical", "TIR_03": "jalon_vertical", "TIR_04": "remo_horizontal", "TIR_05": "remo_horizontal", "TIR_06": "remo_horizontal", "TIR_07": "remo_horizontal", "TIR_08": "biceps", "TIR_09": "biceps", "TIR_10": "biceps", "TIR_11": "biceps", "TIR_12": "hombro_posterior", "TIR_13": "hombro_posterior", "TIR_14": "remo_horizontal", "TIR_15": "jalon_vertical", "COR_01": "core_estabilidad", "COR_02": "core_estabilidad", "COR_03": "core_estabilidad", "COR_04": "core_dinamico", "COR_05": "core_dinamico", "COR_06": "core_rotacion", "COR_07": "core_estabilidad", "COR_08": "core_dinamico", "CAR_01": "cardio", "CAR_02": "cardio", "CAR_03": "cardio", "CAR_04": "cardio", "CAR_05": "cardio", "CAR_06": "cardio", "CAR_07": "cardio", "CAR_08": "cardio", "CAR_09": "cardio", "CAR_10": "cardio", "CAR_11": "cardio"}
+    "PIE_19": "desplante", "EMP_01": "press_horizontal", "EMP_02": "press_horizontal", "EMP_03": "press_horizontal", "EMP_04": "press_inclinado", "EMP_05": "press_inclinado", "EMP_06": "press_vertical", "EMP_07": "press_vertical", "EMP_08": "press_vertical", "EMP_09": "aislamiento_pecho", "EMP_10": "aislamiento_pecho", "EMP_11": "triceps", "EMP_12": "triceps", "EMP_13": "triceps", "EMP_14": "triceps", "EMP_15": "core_dinamico", "EMP_16": "core_estabilidad", "EMP_17": "core_estabilidad", "EMP_18": "core_estabilidad", "EMP_19": "press_vertical", "TIR_01": "jalon_vertical", "TIR_02": "jalon_vertical", "TIR_03": "jalon_vertical", "TIR_04": "remo_horizontal", "TIR_05": "remo_horizontal", "TIR_06": "remo_horizontal", "TIR_07": "remo_horizontal", "TIR_08": "biceps", "TIR_09": "biceps", "TIR_10": "biceps", "TIR_11": "biceps", "TIR_12": "hombro_posterior", "TIR_13": "hombro_posterior", "TIR_14": "remo_horizontal", "TIR_15": "jalon_vertical", "COR_01": "core_estabilidad", "COR_02": "core_estabilidad", "COR_03": "core_estabilidad", "COR_04": "core_dinamico", "COR_05": "core_dinamico", "COR_06": "core_rotacion", "COR_07": "core_estabilidad", "COR_08": "core_dinamico", "CAR_01": "cardio", "CAR_02": "cardio", "CAR_03": "cardio", "CAR_04": "cardio", "CAR_05": "cardio", "CAR_06": "cardio", "CAR_07": "cardio", "CAR_08": "cardio", "CAR_09": "cardio", "CAR_10": "cardio", "CAR_11": "cardio",
+    # IDs añadidos en FIX 11 (estaban en CATALOGO sin patrón — volumen subestimado)
+    "COR_09": "core_estabilidad",  # Bird dog
+    "COR_10": "core_dinamico",     # Mountain climbers
+    "COR_11": "core_dinamico",     # Bicicleta abdominal
+    "COR_12": "core_estabilidad",  # Superman en suelo
+    "COR_13": "core_dinamico",     # Tijeras abdominales
+    "COR_14": "core_rotacion",     # Rotación rusa con mancuerna
+    "COR_15": "core_estabilidad",  # Hollow body hold
+    "PIE_18": "desplante",         # Sentadilla goblet con mancuerna
+    "PIE_20": "desplante",         # Zancada lateral
+    "TIR_16": "remo_horizontal",   # Pullover con mancuerna
+    "TIR_17": "hombro_posterior",  # Encogimientos de hombros
+    "TIR_18": "core_estabilidad",  # Superman en banco
+}
 
 def patron_de(ej_id: str) -> str:
     """Devuelve el patrón biomecánico de un ejercicio, o 'desconocido'."""
     return PATRON_POR_ID.get(str(ej_id), "desconocido")
+
+
+# ── CUES TÉCNICOS CANÓNICOS (doc #12 — notas correctas siempre) ──────────────
+CUES_TECNICOS = {'GLU_01': 'aprieta glúteo arriba 1s', 'GLU_02': 'banda activa abductores', 'GLU_03': 'caderas neutras, pausa 1s', 'GLU_04': 'pies en plataforma alta', 'GLU_05': 'rodillas siguen pies', 'GLU_06': 'ancho mayor que cadera', 'GLU_07': 'espalda recta, bisagra cadera', 'GLU_08': 'mancuernas cerca del cuerpo', 'GLU_09': 'rodillas ligeramente flexionadas', 'GLU_10': 'glúteo contraído al final', 'GLU_11': 'cadera alineada, no rotar', 'GLU_12': 'tobillera ajustada, movimiento lento', 'GLU_13': 'rodillas alineadas, no colapsar', 'GLU_14': 'rango completo, pausa', 'GLU_15': 'extensión completa sin hiperextender', 'GLU_16': 'posición neutra de columna', 'GLU_17': 'talones elevados, profundidad máxima', 'GLU_18': 'codo bajo hombro, caderas cuadradas', 'GLU_19': 'bisagra de cadera, no sentadilla', 'GLU_20': 'peso en talones, no punta', 'PIE_01': 'rodillas siguen línea de pies', 'PIE_02': 'pies más anchos, puntas afuera', 'PIE_03': 'espalda neutra en barra', 'PIE_04': 'peso en talones, pecho arriba', 'PIE_05': 'sentadilla frontal, codos altos', 'PIE_06': 'pies altos = más glúteo', 'PIE_07': 'rodillas sin bloquear al extender', 'PIE_08': 'espalda plana, bisagra pura', 'PIE_09': 'mancuernas cerca del cuerpo', 'PIE_10': 'pierna de apoyo ligeramente flexionada', 'PIE_11': 'rodillas fijas, solo femoral', 'PIE_12': 'curl lento en fase excéntrica', 'PIE_13': 'apretar femoral 1s arriba', 'PIE_14': 'rodilla delantera sobre tobillo', 'PIE_15': 'torso recto, paso largo', 'PIE_16': 'talon alto, más cuádriceps', 'PIE_17': 'peso goblet frente al pecho', 'PIE_19': 'pierna trasera baja al piso', 'EMP_01': 'codos a 45°, escápulas fijas', 'EMP_02': 'agarre ancho, rango completo', 'EMP_03': 'excéntrico 3 segundos', 'EMP_04': 'inclinación 30-45°, no vertical', 'EMP_05': 'pecho arriba, no encoger hombros', 'EMP_06': 'codos bajo muñecas siempre', 'EMP_07': 'barra baja por nariz, no frente', 'EMP_08': 'brazos paralelos al suelo', 'EMP_09': 'mancuernas hacia afuera del cuerpo', 'EMP_10': 'movimiento de arco, no recto', 'EMP_11': 'codos fijos, solo tríceps', 'EMP_12': 'agarre neutro, codo pegado', 'EMP_13': 'rotación externa al subir', 'EMP_14': 'polea alta, codos juntos', 'EMP_15': 'abdomen apretado, sin inercia', 'EMP_16': '30-60 segundos sin mover', 'EMP_17': 'caderas en línea, no ceder', 'EMP_18': 'alternado, sin girar cadera', 'EMP_19': 'no encogerse al final', 'TIR_01': 'codos hacia cadera, no atrás', 'TIR_02': 'agarre supino, bíceps activado', 'TIR_03': 'agarre estrecho, codos al cuerpo', 'TIR_04': 'escápulas al final del recorrido', 'TIR_05': 'codo alto, no abierto', 'TIR_06': 'isométrico 1s al final', 'TIR_07': 'cuerpo recto, tirón limpio', 'TIR_08': 'codos fijos junto al cuerpo', 'TIR_09': 'agarre martillo, antebrazo neutro', 'TIR_10': 'rango completo, excéntrico lento', 'TIR_11': 'polea baja, codo fijo', 'TIR_12': 'polea alta, codos afuera', 'TIR_13': 'no encogerse, retracción escapular', 'TIR_14': 'pecho al pecho, no lumbar', 'TIR_15': 'agarre amplio, codos afuera', 'COR_01': '30-60s sin ceder lumbar', 'COR_02': 'lateral, 30s cada lado', 'COR_03': 'glúteo apretado, sin arco', 'COR_04': 'rodillas al pecho, lento', 'COR_05': 'no balancear, control total', 'COR_06': 'rotación desde core, no brazos', 'COR_07': 'palmas al piso, sin hundir', 'COR_08': 'bicicleta lenta, codo a rodilla', 'CAR_01': 'inclinación 8-12%, ritmo moderado', 'CAR_02': 'cadencia constante, no agarrarse', 'CAR_03': 'resistencia moderada, pedaleo suave', 'CAR_04': 'zancada corta, cadencia alta', 'CAR_05': 'brazos activos, respiración rítmica', 'CAR_06': 'postura erguida, cadencia constante', 'CAR_07': 'ritmo constante, respiración nasal', 'CAR_08': 'muñecas sueltas, salto pequeño', 'CAR_09': 'tirar con espalda, no brazos', 'CAR_10': 'escalón completo, glúteo activo', 'CAR_11': 'brazos activos, paso largo'}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# MÓDULO VOLUMEN SEMANAL (Schoenfeld 2017 — 10-20 series/grupo/semana)
+# ═══════════════════════════════════════════════════════════════════
+
+# Mapeo patrón biomecánico → grupo muscular primario para conteo de volumen
+PATRON_A_GRUPO = {
+    "sentadilla":        "cuadriceps",
+    "prensa":            "cuadriceps",
+    "desplante":         "cuadriceps",
+    "puente_cadera":     "gluteo",
+    "bisagra_cadera":    "gluteo",
+    "abduccion":         "gluteo",
+    "curl_femoral":      "isquiotibial",
+    "press_horizontal":  "pecho",
+    "press_inclinado":   "pecho",
+    "aislamiento_pecho": "pecho",
+    "press_vertical":    "hombro",
+    "hombro_posterior":  "hombro",
+    "jalon_vertical":    "espalda",
+    "remo_horizontal":   "espalda",
+    "biceps":            "biceps",
+    "triceps":           "triceps",
+    "core_estabilidad":  "core",
+    "core_dinamico":     "core",
+    "core_rotacion":     "core",
+}
+
+# Rangos científicos de volumen semanal por grupo (Schoenfeld 2017 meta-análisis)
+VOLUMEN_RANGOS = {
+    "cuadriceps":    {"min": 8,  "opt_low": 10, "opt_high": 16, "max": 20},
+    "gluteo":        {"min": 8,  "opt_low": 10, "opt_high": 16, "max": 20},
+    "isquiotibial":  {"min": 6,  "opt_low": 8,  "opt_high": 12, "max": 16},
+    "pecho":         {"min": 8,  "opt_low": 10, "opt_high": 16, "max": 20},
+    "espalda":       {"min": 8,  "opt_low": 10, "opt_high": 16, "max": 20},
+    "hombro":        {"min": 6,  "opt_low": 8,  "opt_high": 14, "max": 18},
+    "biceps":        {"min": 4,  "opt_low": 6,  "opt_high": 12, "max": 16},
+    "triceps":       {"min": 4,  "opt_low": 6,  "opt_high": 12, "max": 16},
+    "core":          {"min": 4,  "opt_low": 6,  "opt_high": 10, "max": 14},
+}
+
+def calcular_volumen_semanal(user_id: int, semana: int) -> dict:
+    """
+    Calcula series efectivas por grupo muscular en una semana completa.
+    Fuente: Schoenfeld (2017) — volumen óptimo 10-20 series/grupo/semana.
+    FIX: reescrito con 1 sola conexión (antes había 2, con conn.close() antes de fetchall).
+    Retorna dict: {grupo: {"series": N, "estado": "bajo"|"optimo"|"alto"}}
+    """
+    conn = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT ejercicio_id, series FROM rutinas
+        WHERE user_id = ? AND semana = ?
+        AND ejercicio_id NOT LIKE 'CAR_%'
+    """, (user_id, semana))
+    rows = cur.fetchall()
+    conn.close()
+
+    # Sumar series por grupo muscular
+    from collections import defaultdict
+    volumen = defaultdict(int)
+    for eid, series in rows:
+        pat   = PATRON_POR_ID.get(eid, "")
+        grupo = PATRON_A_GRUPO.get(pat)
+        if grupo:
+            try:
+                volumen[grupo] += int(series)
+            except:
+                volumen[grupo] += 3  # default si no es int
+
+    # Evaluar estado de cada grupo
+    resultado = {}
+    for grupo, rango in VOLUMEN_RANGOS.items():
+        series_total = volumen.get(grupo, 0)
+        if series_total == 0:
+            estado = "ausente"
+        elif series_total < rango["min"]:
+            estado = "bajo"
+        elif series_total <= rango["opt_high"]:
+            estado = "optimo"
+        elif series_total <= rango["max"]:
+            estado = "alto"
+        else:
+            estado = "exceso"
+        resultado[grupo] = {"series": series_total, "estado": estado}
+
+    return resultado
+
+# ═══════════════════════════════════════════════════════════════════
+# MÓDULO FATIGA Y DELOAD (Israetel — deload cada 4-8 semanas según fatiga)
+# ═══════════════════════════════════════════════════════════════════
+
+FATIGA_NIVELES = {
+    1: ("😊", "Fresco — sin fatiga"),
+    2: ("🙂", "Leve cansancio — normal"),
+    3: ("😐", "Moderada — vigilar"),
+    4: ("😓", "Alta — reducir volumen"),
+    5: ("💀", "Crítica — deload inmediato"),
+}
+
+def registrar_fatiga(user_id: int, semana: int, dia: str, nivel_fatiga: int):
+    """
+    Guarda el nivel de fatiga subjetiva del usuario tras una sesión.
+    FIX: El UPDATE anterior fallaba silenciosamente si no había fila en progreso.
+    Ahora garantiza la fila con INSERT OR IGNORE antes de actualizar.
+    """
+    conn = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
+    cur  = conn.cursor()
+    # Garantizar que existe al menos 1 fila para este día antes del UPDATE
+    # (puede no existir si el usuario no marcó ningún ejercicio)
+    cur.execute("""
+        INSERT OR IGNORE INTO progreso (user_id, semana, dia, ejercicio_id, completado, fatiga_reportada)
+        VALUES (?, ?, ?, '__fatiga__', 0, ?)
+    """, (user_id, semana, dia, nivel_fatiga))
+    # Actualizar todas las filas del día con la fatiga reportada
+    cur.execute("""
+        UPDATE progreso SET fatiga_reportada = ?
+        WHERE user_id = ? AND semana = ? AND dia = ?
+    """, (nivel_fatiga, user_id, semana, dia))
+    conn.commit()
+    conn.close()
+    logger.info(f"Fatiga {nivel_fatiga}/5 registrada: user={user_id} S{semana} {dia}")
+
+def evaluar_fatiga_acumulada(user_id: int) -> dict:
+    """
+    Analiza el patrón de fatiga para detectar sobrecarga.
+    Triggers de deload (Israetel — Renaissance Periodization):
+      - Fatiga promedio >= 4 durante 2 días consecutivos
+      - Fatiga crítica (5) en cualquier momento
+      - 4 semanas de progresión sin deload
+    Retorna: {"necesita_deload": bool, "razon": str, "fatiga_promedio": float}
+    """
+    conn = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
+    cur  = conn.cursor()
+    # Fatiga de los últimos 6 registros (últimas 6 sesiones)
+    cur.execute("""
+        SELECT fatiga_reportada, semana FROM progreso
+        WHERE user_id = ? AND fatiga_reportada IS NOT NULL
+        ORDER BY ts DESC LIMIT 6
+    """, (user_id,))
+    registros = cur.fetchall()
+
+    # Semana máxima del plan actual
+    cur.execute("SELECT MAX(semana) FROM rutinas WHERE user_id = ?", (user_id,))
+    max_sem = (cur.fetchone() or [0])[0] or 0
+    conn.close()
+
+    if not registros:
+        return {"necesita_deload": False, "razon": "sin datos", "fatiga_promedio": 0}
+
+    fatigas = [r[0] for r in registros]
+    promedio = sum(fatigas) / len(fatigas)
+
+    # Trigger 1: fatiga crítica
+    if 5 in fatigas[:2]:  # en las últimas 2 sesiones
+        return {"necesita_deload": True, "razon": "fatiga crítica detectada", "fatiga_promedio": promedio}
+
+    # Trigger 2: fatiga alta sostenida
+    if promedio >= 4 and len(fatigas) >= 3:
+        return {"necesita_deload": True, "razon": "fatiga alta sostenida (≥4/5 en últimas 3 sesiones)", "fatiga_promedio": promedio}
+
+    # Trigger 3: 4 semanas sin deload (el plan ya incluye S4 como deload)
+    # Si llegan a semana 5+ sin resetear, forzar
+    if max_sem >= 5:
+        return {"necesita_deload": True, "razon": "4 semanas de progresión completadas", "fatiga_promedio": promedio}
+
+    return {"necesita_deload": False, "razon": "ok", "fatiga_promedio": promedio}
+
+
+def ajustar_sesion_por_fatiga(user_id: int, semana: int, dia: str, nivel_fatiga: int):
+    """
+    Ajusta la sesión siguiente si la fatiga es alta (niveles 4-5).
+    - Reduce 1 serie en ejercicios accesorios (no el compuesto principal)
+    - Reduce cardio a 10 min si fatiga = 5
+    Mantiene siempre: 4 ejercicios de fuerza + 1 cardio
+    """
+    if nivel_fatiga < 4:
+        return  # no hacer nada
+
+    conn = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
+    cur  = conn.cursor()
+
+    # Obtener ejercicios del día con su orden (el compuesto es orden=1)
+    cur.execute("""
+        SELECT id, ejercicio_id, series, orden FROM rutinas
+        WHERE user_id = ? AND semana = ? AND dia = ?
+        ORDER BY orden ASC
+    """, (user_id, semana, dia))
+    rows = cur.fetchall()
+
+    for row_id, eid, series, orden in rows:
+        pat = PATRON_POR_ID.get(eid, "")
+        es_cardio = pat == "cardio" or eid.startswith("CAR_")
+
+        if es_cardio and nivel_fatiga == 5:
+            # Fatiga crítica: reducir cardio a 10min
+            cur.execute("UPDATE rutinas SET reps = '10min' WHERE id = ?", (row_id,))
+        elif orden >= 3 and not es_cardio:
+            # Accesorios (posición 3 y 4): reducir 1 serie, mínimo 2
+            nuevas_series = max(2, int(series or 3) - 1)
+            cur.execute("UPDATE rutinas SET series = ? WHERE id = ?", (nuevas_series, row_id))
+
+    conn.commit()
+    conn.close()
+    logger.info(f"Ajuste fatiga {nivel_fatiga}/5 aplicado: user={user_id} S{semana} {dia}")
+
+
+
+
+def formatear_volumen_reporte(vol: dict) -> str:
+    """
+    Formatea el volumen semanal para mostrar al usuario en Telegram.
+    FIX 1: variable 'bar' no estaba asignada (NameError garantizado).
+    FIX 2: la función estaba truncada sin return.
+    """
+    emojis = {"ausente": "⚫", "bajo": "🔴", "optimo": "🟢", "alto": "🟡", "exceso": "🔴"}
+    lines = ["📊 <b>Volumen semanal por músculo</b>", "━━━━━━━━━━━━━━━━━━", ""]
+    grupos_es = {
+        "cuadriceps": "Cuádriceps", "gluteo": "Glúteo", "isquiotibial": "Isquio",
+        "pecho": "Pecho", "espalda": "Espalda", "hombro": "Hombro",
+        "biceps": "Bíceps", "triceps": "Tríceps", "core": "Core",
+    }
+    for grupo, data in vol.items():
+        if data["series"] == 0 and data["estado"] == "ausente":
+            continue
+        emoji    = emojis.get(data["estado"], "⚪")
+        rango    = VOLUMEN_RANGOS[grupo]
+        bar_filled = min(10, round(data["series"] / rango["opt_high"] * 10))
+        bar      = "█" * bar_filled + "░" * (10 - bar_filled)   # FIX: asignar 'bar'
+        nombre_grupo = grupos_es.get(grupo, grupo)
+        n_series = data["series"]
+        opt_rango = f'{rango["opt_low"]}-{rango["opt_high"]}'
+        linea = f"{emoji} <b>{nombre_grupo}</b>: {n_series} series\n   <code>[{bar}]</code> óptimo: {opt_rango}"
+        lines.append(linea)
+    lines += ["", "<i>🟢 óptimo · 🟡 alto · 🔴 bajo/exceso</i>"]
+    return "\n".join(lines)  # FIX: return que faltaba
+
+
 
 
 # ── METADATA FATIGA (auditoría #8 — no 2 alta-fatiga seguidos) ────────────────
@@ -232,34 +489,41 @@ def construir_prompt_semana(perfil: dict, num_semana: int) -> str:
     ej    = 5  # estructura científica: 4 fuerza + 1 cardio siempre
 
     # Progresión por semana
-    # Series se ajustan por volumen elegido (dur=tiempo como proxy de volumen)
-    # Estructura: series_base = según duración, reps = según semana/nivel
-    # Series según nivel — la ciencia decide, no el usuario (doc #10)
-    # Principiante: 3 series (volumen moderado, técnica primero)
-    # Intermedio: 4 series (volumen óptimo para hipertrofia — Schoenfeld 2017)
-    # Avanzado: 5 series (alto volumen, necesario para progreso — Krieger 2010)
-    s = {"principiante": 3, "intermedio": 4, "avanzado": 5}.get(nivel, 4)
+    # ── SERIES, REPS Y RIR POR NIVEL (Deschenes 2002 + Krieger 2010 + Schoenfeld 2017) ──
+    # EJERCICIOS: siempre 4 de fuerza + 1 cardio = 5 (nunca cambia por nivel)
+    # SERIES: sí varían por nivel — el SNC de un principiante no tolera el mismo volumen
+    #   Principiante: 3 series — suficiente para adaptación neuromuscular (Deschenes 2002)
+    #   Intermedio:   4 series — punto dulce hipertrofia (Schoenfeld 2017)
+    #   Avanzado:    5 series — necesario para superar adaptación (Krieger 2010)
+    s  = {"principiante": 3, "intermedio": 4, "avanzado": 5}.get(nivel, 4)
+    sd = max(2, s - 1)  # series deload = s-1 (reducción ~25% volumen)
+
+    # PROGRESIÓN DOBLE — mismo ejercicio S1-S3, RIR baja cada semana, S4=DELOAD
+    # PROHIBIDO: RIR 0 en principiante | más de 12 reps en avanzado
     prog = {
         "principiante": {
-            1: f"{s} series x 15 reps — RIR 4 (técnica > carga)",
-            2: f"{s} series x 12 reps — RIR 3 (+5% carga vs S1)",
-            3: f"{s} series x 10 reps — RIR 2 (variantes más libres)",
-            4: f"{s} series x 8 reps  — RIR 1 (máxima carga del bloque)",
+           # 3 series | 10-15 reps | RIR 2-3 | máquinas guiadas SOLO
+           1: f"{s} series × 12-15 reps — RIR 3 — máquina guiada, técnica antes que carga",
+           2: f"{s} series × 10-12 reps — RIR 2 — mismo ejercicio S1, +5% carga",
+           3: f"{s} series × 10-12 reps — RIR 2 — mismo ejercicio S1, +5% vs S2",
+           4: f"{sd} series × 12-15 reps — RIR 4 — DELOAD 60% carga, recuperación",
         },
         "intermedio": {
-            1: f"{s} series x 12 reps — RIR 3 (hipertrofia metabólica)",
-            2: f"{s} series x 8-10 reps — RIR 2 (mecánica +carga)",
-            3: f"{s} series x 6-8 reps  — RIR 1 (fuerza-hipertrofia)",
-            4: f"{max(2,s-1)} series x 12 reps — RIR 4 DELOAD (60% carga)",
+           # 4 series | 6-12 reps | RIR 1-2 | mancuernas + poleas libres
+           1: f"{s} series × 10-12 reps — RIR 2 — mancuernas libres, rango completo",
+           2: f"{s} series × 8-10 reps  — RIR 2 — mismo ejercicio S1, +5-10% carga",
+           3: f"{s} series × 6-8 reps   — RIR 1 — mismo ejercicio S1, fuerza-hipertrofia",
+           4: f"{sd} series × 10-12 reps — RIR 4 — DELOAD 60% carga, mismos ejercicios S1",
         },
         "avanzado": {
-            1: f"{s} series x 3-5 reps  — RIR 0 (solo compuestos pesados)",
-            2: f"{s} series x 8-10 reps — RIR 1 (tempo 2-1-2)",
-            3: f"{s} series x 12-15 reps — RIR 2 (congestión y aislamiento)",
-            4: f"{max(2,s-1)} series x 8 reps — RIR 3 DELOAD (50% carga)",
+           # 5 series | 5-10 reps | RIR 0-1 | barra libre, ejercicios complejos
+           1: f"{s} series × 8-10 reps — RIR 1 — barra libre o ejercicio complejo",
+           2: f"{s} series × 6-8 reps  — RIR 1 — mismo ejercicio S1, sobrecarga progresiva",
+           3: f"{s} series × 5-8 reps  — RIR 0 — mismo ejercicio S1, máxima tensión",
+           4: f"{sd} series × 8-10 reps — RIR 3 — DELOAD 50% carga, mismos ejercicios S1",
         },
     }
-    series_reps = prog.get(nivel, prog["principiante"])[num_semana]
+    series_reps = prog.get(nivel, prog["intermedio"])[num_semana]
 
     # Split del día según días/semana y objetivo
     if dias == 3:
@@ -298,22 +562,33 @@ TAREA: Genera la semana {num_semana} de 4 para este usuario.
 - El ultimo ejercicio SIEMPRE es cardio (CAR_01 a CAR_10) con series=1 y reps="20min"
 - Los ejercicios de fuerza usan reps como string: "15" "8-10"
 - El cardio SIEMPRE usa: series=1, reps="20min" (nunca series=3, nunca reps="45s")
-- Notas: maximo 5 palabras, sin comillas internas
+- Notas: cue tecnico del movimiento, 5 palabras max, sin comillas
+  CORRECTO: "codos a 45 grados", "pausa 1s arriba", "espalda recta siempre"
+  INCORRECTO: inventar ejercicio diferente, mezclar musculos, poner nombre de otro ejercicio
+  La nota DEBE describir la TECNICA del ejercicio que aparece en el campo ejercicio_id
 
 DIAS Y GRUPOS REQUERIDOS:
 {chr(10).join(f"  {d}: grupo={g}" for d,g in zip(dias_split, grupos_split))}
 
 CONTRATO DE SESION (no negociable):
 
-ESTRUCTURA OBLIGATORIA POR DIA (independiente del tiempo):
-  1 ejercicio PRINCIPAL (compuesto pesado — rol=principal)
-  1-2 ejercicios SECUNDARIOS (apoyo al principal — rol=secundario)
-  1 ejercicio AISLAMIENTO (finalizar el grupo — rol=aislamiento)
-  1 CARDIO al final (series=1, reps="20min")
-  TOTAL: exactamente {ej} ejercicios de fuerza + 1 cardio = {ej+1} total
+ESTRUCTURA OBLIGATORIA — 5 EJERCICIOS EXACTOS, SIEMPRE (nunca 3, nunca 4, nunca 6):
+  Posición 1: COMPUESTO PRINCIPAL — el más pesado y activador del grupo del día
+  Posición 2: COMPUESTO SECUNDARIO — patrón diferente al principal (bisagra si pos1=sentadilla)
+  Posición 3: UNILATERAL o ACCESORIO — desplante, remo a 1 mano, curl femoral unilateral
+  Posición 4: AISLAMIENTO — rematar músculo objetivo (abducción, extensión, curl, etc.)
+  Posición 5: CARDIO — series=1, reps="20min", siempre último
 
-EL TIEMPO SOLO AJUSTA: series (reducir de 4 a 3 si hay poco tiempo)
-EL TIEMPO NUNCA ELIMINA: patrones de movimiento, aislamientos, ni el cardio
+SERIES Y REPS (tu nivel = {nivel}):
+  TU PROTOCOLO: {series_reps}
+  principiante: 3 series | 10-15 reps | RIR 2-3 | máquinas guiadas | PROHIBIDO RIR 0
+  intermedio:   4 series | 6-12 reps  | RIR 1-2 | mancuernas libres
+  avanzado:     5 series | 5-10 reps  | RIR 0-1 | barra libre | PROHIBIDO >12 reps principales
+  deload (S4):  series-1 | RIR 4 | 50-60% carga | MISMOS ejercicios que S1
+NIVEL DEFINE DIFICULTAD DEL EJERCICIO:
+  principiante = SOLO máquinas guiadas, sin barra libre ni sentadilla búlgara
+  intermedio   = mancuernas libres, poleas, unilaterales básicos
+  avanzado     = barra libre, sentadilla búlgara, dominadas, unilaterales avanzados
 
 REGLAS DE PATRON (el backend rechaza violaciones):
   - Max 1 sentadilla por dia (PIE_01 PIE_02 PIE_03 PIE_16)
@@ -323,6 +598,13 @@ REGLAS DE PATRON (el backend rechaza violaciones):
   - Max 1 jalon_vertical por dia (TIR_01 TIR_02 TIR_03)
 
 CARDIO: IDs disponibles: {' '.join(e['ejercicio_id'] for e in CATALOGO if e['grupo']=='cardio')}
+
+PROGRESION DOBLE (regla de oro del crecimiento muscular):
+  - S1 = reps altas, RIR alto — aprender el movimiento y la carga base
+  - S2 = mismos ejercicios S1, pero RIR -1 (más cerca del límite real)
+  - S3 = variantes más difíciles del mismo patron, RIR -1 más
+  - S4 = DELOAD — mismos ejercicios S1, 60% carga, RIR alto — recuperación
+  REGLA: el cuerpo crece cuando se adapta, no cuando se destruye
 
 FORMATO EXACTO (SOLO JSON, nada mas):
 {{"semana":{num_semana},"dias":[{ejemplo_dia}]}}
@@ -395,10 +677,7 @@ def validar_coherencia_dia(dia: dict) -> tuple[bool, str]:
         fuerza_filtrada.append(e)
 
     if eliminados:
-        logger.warning(f"Coherencia: {len(eliminados)} eliminados en {dia.get('dia','?')}: {[(e[0],e[1]) for e in eliminados]}")
-
-    if eliminados:
-        logger.warning(f"Coherencia: eliminados {len(eliminados)} ejercicios redundantes en {dia.get('dia','?')}: {eliminados}")
+        logger.warning(f"Coherencia: {len(eliminados)} ejercicios redundantes eliminados en {dia.get('dia','?')}: {eliminados}")
 
     # ── Paso 2: Cardio siempre al final, máximo 1 ────────────────────────────
     # Solo 1 cardio (el primero encontrado) al final
@@ -426,25 +705,37 @@ def validar_coherencia_dia(dia: dict) -> tuple[bool, str]:
 
 
 def normalizar_ejercicio(e: dict) -> dict:
-    """Normaliza un ejercicio: nombre del catálogo, reps como string, notas saneadas.
-    Cardio: fuerza series=1 y reps en formato tiempo."""
+    """Normaliza un ejercicio: nombre del catálogo, reps, notas técnicas canónicas.
+    Usa CUES_TECNICOS para garantizar que la nota siempre corresponda al ejercicio real.
+    Elimina alucinaciones: "elevaciones laterales" con nota "triceps frances" es imposible.
+    """
     eid = str(e.get("ejercicio_id", ""))
     e["ejercicio"] = CATALOGO_POR_ID[eid]["nombre"]
     es_cardio = eid.startswith("CAR_") or CATALOGO_POR_ID.get(eid, {}).get("grupo") == "cardio"
     if es_cardio:
         e["series"] = 1
         reps_raw = str(e.get("reps", "20min"))
-        # Normalizar a formato minutos: "45s" → "20min", "3" → "20min", "20min" → "20min"
-        if "min" not in reps_raw:
-            e["reps"] = "20min"
-        else:
-            e["reps"] = reps_raw
+        e["reps"] = reps_raw if "min" in reps_raw else "20min"
     else:
         e["reps"] = str(e.get("reps", "10"))
-        try:    e["series"] = int(e.get("series", 3))
-        except: e["series"] = 3
-    nota = str(e.get("notas", "")).replace('"','').replace("'",'').strip()[:60]
-    e["notas"] = nota
+        try:
+            series_val = int(e.get("series", 3))
+            # Rango válido científico: 2 (deload principiante) a 5 (avanzado)
+            # Fuera de rango = error de Gemini, corregir al valor por defecto del nivel
+            if series_val < 2:
+                series_val = 3  # mínimo absoluto
+            elif series_val > 5:
+                series_val = 4  # máximo razonable sin degradar calidad
+            e["series"] = series_val
+        except:
+            e["series"] = 3
+    # Cue técnico: usar canónico del catálogo si existe, si no sanitizar el de Gemini
+    cue_canonico = CUES_TECNICOS.get(eid, "")
+    if cue_canonico:
+        e["notas"] = cue_canonico
+    else:
+        nota = str(e.get("notas", "")).replace('"','').replace("'",'').strip()[:50]
+        e["notas"] = nota
     return e
 
 
@@ -611,11 +902,12 @@ Día 3 → grupo=pierna   : prensa + sentadilla_variante + isquio + abduccion + 
 Día 4 → grupo=tiron    : jalón + remo + curl + face_pull
 ⚠ Días 1 y 3 son glúteo/pierna. Días 2 y 4 son upper. Sin glúteo en días 2 y 4."""
         else:
-            split = """SPLIT 4 DÍAS — Upper/Lower (equilibrio óptimo recuperación-frecuencia):
-Día 1 → grupo=pierna   : sentadilla + prensa + isquio + glúteo + cardio
-Día 2 → grupo=empuje   : press_pecho + press_hombro + triceps + core
-Día 3 → grupo=pierna   : prensa + peso_muerto_rumano + abduccion + cardio
-Día 4 → grupo=tiron    : jalón + remo + curl + face_pull"""
+            split = """SPLIT 4 DÍAS — Upper/Lower equilibrado (tirón = empuje, Schoenfeld 2017):
+Día 1 → grupo=pierna   : sentadilla + prensa + isquio + cardio
+Día 2 → grupo=empuje   : press_pecho + press_hombro + triceps + face_pull (postura)
+Día 3 → grupo=tiron    : jalón + remo + curl + remo_inverso
+Día 4 → grupo=pierna   : prensa + PDR + abduccion + cardio
+NOTA: face_pull en día empuje y tirón = hombro posterior protegido"""
     else:  # 5 días
         if "gluteo" in obj:
             split = """SPLIT 5 DÍAS — PPL especializado glúteo (máximo volumen con recuperación adecuada):
@@ -626,36 +918,50 @@ Día 4 → grupo=pierna   : prensa + sentadilla_variante + isquio + patada_polea
 Día 5 → grupo=gluteo   : hip_thrust_banda + extensión_cadera + fire_hydrant + caminata_inclinada
 ⚠ CRÍTICO: Días 2 y 3 son upper sin glúteo. Días 1,4,5 incluyen glúteo con volumen decreciente."""
         else:
-            split = """SPLIT 5 DÍAS — PPL (Push/Pull/Legs — Nippard 2023 intermediate template):
+            split = """SPLIT 5 DÍAS — PPLPull (frecuencia equilibrada — 2x tirón evita síndrome cruzado):
 Día 1 → grupo=pierna   : sentadilla + prensa + isquio + glúteo + cardio
-Día 2 → grupo=empuje   : press_pecho + press_inclinado + hombro + triceps
-Día 3 → grupo=tiron    : jalón + remo + curl + face_pull
+Día 2 → grupo=empuje   : press_pecho + press_inclinado + triceps + face_pull
+Día 3 → grupo=tiron    : jalón + remo + curl + remo_inverso (postura)
 Día 4 → grupo=pierna   : prensa + PDR + abduccion + cardio
-Día 5 → grupo=empuje   : press_hombro + aperturas + triceps + core"""
+Día 5 → grupo=tiron    : jalón_agarre_estrecho + remo_horizontal + curl + core
+NOTA: 2 días de tirón vs 2 días de empuje = postura correcta (doc #12)"""
 
     # ── CIENCIA DE VOLUMEN Y PROGRESIÓN ──────────────────────────────────────
     # Schoenfeld (2017): 10-20 series/semana/grupo para hipertrofia. RIR como proxy de intensidad.
     # Nippard: progresión lineal de carga es el marcador #1 de progreso real.
+    # SERIES POR NIVEL (Deschenes 2002 + Krieger 2010 + Schoenfeld 2017):
+    #   Principiante: 3 series | máquinas guiadas, movimientos bilaterales simples
+    #   Intermedio:   4 series | mancuernas/poleas libres, unilaterales básicos
+    #   Avanzado:     5 series | barra libre, unilaterales difíciles, sentadilla búlgara
+    # NIVEL = dificultad del ejercicio + número de series (ambas cosas)
+
+    # Series correctas por nivel — Deschenes 2002 (neuromuscular) + Krieger 2010 + Schoenfeld 2017
+    s_sys  = {"principiante": 3, "intermedio": 4, "avanzado": 5}.get(nivel, 4)
+    sd_sys = max(2, s_sys - 1)  # deload = s-1
+
     if nivel == "principiante":
-        prog = """PROGRESIÓN LINEAL (Schoenfeld 2010 — adaptación neuromuscular primaria S1-S2):
-  S1: 3 series × 15 reps — RIR=4 — técnica > carga. Máquinas guiadas. Sin sentadilla búlgara.
-  S2: 3 series × 12 reps — RIR=3 — +5-10% carga. Mismos ejercicios que S1.
-  S3: 3 series × 10 reps — RIR=2 — introduce mancuernas y movimientos libres. Nuevos ejercicios.
-  S4: 4 series × 8  reps — RIR=1 — máximo estímulo del bloque. Carga desafiante.
-CAMBIO EJERCICIOS: S3-S4 deben usar ejercicios DISTINTOS a S1-S2 del mismo grupo funcional."""
+        prog = f"""PROGRESIÓN DOBLE — PRINCIPIANTE ({s_sys} series | 10-15 reps | RIR 2-3):
+  EJERCICIOS: SOLO máquinas guiadas — prensa, hip thrust en banco, jalón en polea, remo en máquina.
+  PROHIBIDO: barra libre libre, peso muerto convencional, sentadilla búlgara, RIR 0.
+  S1: {s_sys}×12-15 — RIR 3 — técnica perfecta, peso moderado
+  S2: {s_sys}×10-12 — RIR 2 — mismo ejercicio S1, +5% carga
+  S3: {s_sys}×10-12 — RIR 2 — mismo ejercicio S1, +5% carga vs S2
+  S4: {sd_sys}×12-15 — RIR 4 — DELOAD 60% carga, recuperación activa"""
     elif nivel == "intermedio":
-        prog = """PERIODIZACIÓN ONDULANTE (DUP — Rhea 2003: superior a progresión lineal en intermedios):
-  S1: 4 series × 12 reps — RIR=3 — hipertrofia metabólica, pump máximo
-  S2: 4 series × 8-10 reps — RIR=2 — hipertrofia mecánica, +5-10% carga
-  S3: 4 series × 6-8 reps  — RIR=1 — zona fuerza-hipertrofia, máxima tensión mecánica
-  S4: 3 series × 12 reps   — RIR=4 — DELOAD activo, 60% de carga máxima, recuperación
-CAMBIO EJERCICIOS: S3 introduce ejercicio más complejo que S1 (ej: Smith → barra libre)."""
+        prog = f"""PROGRESIÓN DOBLE — INTERMEDIO ({s_sys} series | 6-12 reps | RIR 1-2):
+  EJERCICIOS: mancuernas libres, poleas, unilaterales básicos. Sentadilla goblet o Smith.
+  S1: {s_sys}×10-12 — RIR 2 — rango completo, técnica refinada
+  S2: {s_sys}×8-10  — RIR 2 — mismo ejercicio S1, +5-10% carga
+  S3: {s_sys}×6-8   — RIR 1 — mismo ejercicio S1, zona fuerza-hipertrofia
+  S4: {sd_sys}×10-12 — RIR 4 — DELOAD 60% carga, mismos ejercicios S1"""
     else:
-        prog = """PERIODIZACIÓN ONDULANTE DIARIA (Figueiredo 2018 — avanzados necesitan variación intra-semana):
-  Día Fuerza:     5 series × 3-5 reps  — RIR=0-1 — compuestos pesados únicamente
-  Día Hipertrofia: 4 series × 8-12 reps — RIR=1-2 — tempo 2-1-2, rango completo
-  Día Volumen:    3 series × 15-20 reps — RIR=2-3 — congestión, aislamiento
-  S4: DELOAD — reducir volumen 40%, mantener intensidad."""
+        prog = f"""PROGRESIÓN DOBLE — AVANZADO ({s_sys} series | 5-10 reps | RIR 0-1):
+  EJERCICIOS: barra libre, sentadilla búlgara, peso muerto, dominadas, unilaterales avanzados.
+  PROHIBIDO: más de 12 reps en ejercicios principales (infraestimulo para avanzados).
+  S1: {s_sys}×8-10 — RIR 1 — compuesto pesado, técnica experta
+  S2: {s_sys}×6-8  — RIR 1 — mismo ejercicio S1, sobrecarga máxima
+  S3: {s_sys}×5-8  — RIR 0 — mismo ejercicio S1, máxima tensión mecánica
+  S4: {sd_sys}×8-10 — RIR 3 — DELOAD 50% carga, mismos ejercicios S1"""
 
     # ── PROTOCOLO POR OBJETIVO (evidencia EMG y fisiología) ──────────────────
     if "gluteo" in obj:
@@ -708,12 +1014,13 @@ SOLO produces JSON válido. CERO texto fuera del JSON.
 PERFIL DEL USUARIO:
   Género: {perfil.get('genero','mujer')} | Nivel: {nivel} | Objetivo: {obj} | Días/semana: {dias} | Duración: {dur}min | Limitaciones: {lim}
 
-ESTRUCTURA DE SESIÓN — {ej} EJERCICIOS POR DÍA (exacto):
-  Posición 1: Compuesto dominante del objetivo (mayor activación EMG)
-  Posición 2: Compuesto secundario (patrón motor complementario)
-  Posición 3: Aislamiento primario (músculo objetivo)
-  {"Posición 4: Aislamiento secundario o core" if ej >= 4 else ""}
-  {"Posición 5: CARDIO — siempre último" if ej >= 5 else "Última posición: CARDIO (CAR_01..CAR_10) — siempre al final" if ej == 4 else "Posición 3: CARDIO al final si aplica"}
+ESTRUCTURA DE SESIÓN — 5 EJERCICIOS POR DÍA, SIEMPRE (Schoenfeld 2017):
+  Posición 1: Compuesto principal — mayor activación EMG, ejercicio más difícil primero
+  Posición 2: Compuesto secundario — patrón complementario (bisagra si pos1=sentadilla, etc.)
+  Posición 3: Unilateral o accesorio — corrige desequilibrios, mayor rango de movimiento
+  Posición 4: Aislamiento — rematar el músculo objetivo con fatiga local máxima
+  Posición 5: CARDIO (CAR_01..CAR_11) — SIEMPRE el último, series=1 reps="20min"
+  TOTAL: 4 fuerza + 1 cardio = 5 exacto. Nunca 3. Nunca 6.
 
 {split}
 
@@ -729,7 +1036,7 @@ REGLAS ABSOLUTAS (cada violación invalida el plan):
 3. Progresión de estímulo cada semana: aumenta carga, o reduce reps, o cambia RIR. Al menos UNA variable debe cambiar.
 4. reps SIEMPRE string: "15" "8-10" "45s" "30s". NUNCA número.
 5. Al menos {max(1, dias-2)} días/semana terminan con cardio (CAR_01..CAR_10).
-6. S3-S4 usan ejercicios distintos a S1-S2 (misma función, diferente variante).
+6. S2-S3 usan MISMOS ejercicios que S1 con +5-10% carga. S4 (deload) = mismos ejercicios S1 al 60% carga.
 7. Notas: máx 6 palabras por nota. Solo en ejercicios principales. Sé ultra-conciso.
 8. Días de la semana DISTINTOS. Mismo grupo muscular: mínimo 48h entre sesiones.
 9. JSON PURO. Sin markdown. Sin explicaciones. Sin campo url.
@@ -874,6 +1181,8 @@ def init_db():
             user_id INTEGER PRIMARY KEY, nombre TEXT,
             rol TEXT DEFAULT 'user', alta_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )"""),
+        ("v5", "ALTER TABLE progreso ADD COLUMN fatiga_reportada INTEGER DEFAULT NULL"),
+
     ]
     for version, sql in migraciones:
         try:
@@ -1039,6 +1348,10 @@ def obtener_estado_usuario(user_id: int):
     row = cur.fetchone()
     conn.close()
     return row if row else (1, "lunes")
+
+def obtener_semana_y_dia_actual(user_id: int):
+    """Alias de obtener_estado_usuario — FIX: los nuevos handlers usaban este nombre."""
+    return obtener_estado_usuario(user_id)
 
 def iniciar_estado_usuario(user_id: int):
     conn = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
@@ -1461,6 +1774,8 @@ async def check_auth(update: Update) -> bool:
 MENU_PRINCIPAL = InlineKeyboardMarkup([
     [InlineKeyboardButton("🏋️ Ver rutina de hoy",    callback_data="menu:hoy")],
     [InlineKeyboardButton("📅 Ver plan completo",     callback_data="menu:plan")],
+    [InlineKeyboardButton("📊 Volumen semanal",       callback_data="ver_volumen")],
+    [InlineKeyboardButton("😓 Reportar fatiga",       callback_data="ver_fatiga")],
     [InlineKeyboardButton("🆕 Crear nuevo plan",      callback_data="menu:nuevo")],
     [InlineKeyboardButton("🔄 Resetear preferencias", callback_data="menu:swaps")],
 ])
@@ -1610,6 +1925,71 @@ async def gemini_coach_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         logger.exception("Error en coach conversacional")
         await update.message.reply_text("Descansa un poco, usa el menú ❤️")
 
+
+async def reporte_fatiga_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Muestra el selector de fatiga post-sesión."""
+    if not await check_auth(update): return
+    query = update.callback_query
+    await query.answer()
+    user_id = update.effective_user.id
+
+    semana, dia = obtener_semana_y_dia_actual(user_id)
+    teclado = InlineKeyboardMarkup([
+        [InlineKeyboardButton("😊 Fresco (1)",    callback_data=f"fat:{semana}:{dia}:1"),
+         InlineKeyboardButton("🙂 Leve (2)",      callback_data=f"fat:{semana}:{dia}:2")],
+        [InlineKeyboardButton("😐 Moderada (3)",  callback_data=f"fat:{semana}:{dia}:3"),
+         InlineKeyboardButton("😓 Alta (4)",      callback_data=f"fat:{semana}:{dia}:4")],
+        [InlineKeyboardButton("💀 Crítica (5)",   callback_data=f"fat:{semana}:{dia}:5")],
+    ])
+    await query.edit_message_text(
+        "💪 <b>¿Cómo quedaste hoy?</b>\n\n"
+        "Reporta tu fatiga para ajustar la próxima sesión si es necesario.\n"
+        "<i>Esto no cambia tu plan — solo lo optimiza si estás al límite.</i>",
+        reply_markup=teclado, parse_mode="HTML"
+    )
+
+
+async def fat_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Procesa el reporte de fatiga y ajusta la siguiente sesión si corresponde."""
+    if not await check_auth(update): return
+    query = update.callback_query
+    await query.answer()
+    user_id = update.effective_user.id
+
+    partes = query.data.split(":")
+    semana, dia, nivel_s = int(partes[1]), partes[2], int(partes[3])
+
+    registrar_fatiga(user_id, semana, dia, nivel_s)
+    emoji, desc = FATIGA_NIVELES[nivel_s]
+    respuesta = f"{emoji} <b>{desc}</b>\n\n"
+    if nivel_s >= 4:
+        ajustar_sesion_por_fatiga(user_id, semana, dia, nivel_s)
+        if nivel_s == 5:
+            respuesta += "⚠️ <b>Fatiga crítica.</b> Reduje el cardio a 10 min y 1 serie en accesorios. Si se repite, activaré semana de recuperación."
+        else:
+            respuesta += "Reduje ligeramente el volumen accesorio. El ejercicio compuesto se mantiene intacto."
+    else:
+        respuesta += "Volumen de tu próxima sesión sin cambios. ¡Sigue así! 💪"
+
+    evaluacion = evaluar_fatiga_acumulada(user_id)
+    if evaluacion["necesita_deload"] and nivel_s >= 3:
+        respuesta += f"\n\n🔄 <b>Semana de recuperación recomendada.</b>\nRazón: {evaluacion['razon']}"
+
+    await query.edit_message_text(respuesta, parse_mode="HTML")
+
+async def volumen_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Muestra el reporte de volumen semanal del usuario."""
+    if not await check_auth(update): return
+    query = update.callback_query
+    await query.answer()
+    user_id = update.effective_user.id
+    semana, _ = obtener_semana_y_dia_actual(user_id)
+    vol = calcular_volumen_semanal(user_id, semana)
+    texto = formatear_volumen_reporte(vol)
+    teclado = InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Volver", callback_data="menu:main")]])
+    await query.edit_message_text(texto, parse_mode="HTML", reply_markup=teclado)
+
+
 async def adduser_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: añadir usuario sin redeploy. Uso: /adduser 123456789"""
     if update.effective_user.id != 1557254587:
@@ -1756,7 +2136,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("👨 Hombre", callback_data="gen:hombre")],
         ])
         await query.edit_message_text(
-            "✅ Objetivo guardado.\n\n<b>Paso 2/6</b> — ¿Cuál es tu género?\n"
+            "✅ Objetivo guardado.\n\n<b>Paso 2/5</b> — ¿Cuál es tu género?\n"
             "<i>Esto ajusta el énfasis muscular del programa.</i>",
             reply_markup=teclado, parse_mode="HTML"
         )
@@ -1775,15 +2155,16 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """, (user_id, genero))
         conn_gen.commit()
         conn_gen.close()
-        # Paso 3: nivel
+        # Paso 3: nivel — define dificultad del ejercicio, no volumen
         teclado = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🌱 Primera vez / menos de 3 meses", callback_data="niv:principiante")],
-            [InlineKeyboardButton("💪 6 meses a 2 años con constancia", callback_data="niv:intermedio")],
-            [InlineKeyboardButton("🔥 Más de 2 años entrenando",        callback_data="niv:avanzado")],
+            [InlineKeyboardButton("🌱 Principiante — máquinas guiadas, movimientos simples", callback_data="niv:principiante")],
+            [InlineKeyboardButton("💪 Intermedio — mancuernas libres, ejercicios unilaterales", callback_data="niv:intermedio")],
+            [InlineKeyboardButton("🔥 Avanzado — barra libre, sentadilla búlgara, dominadas",  callback_data="niv:avanzado")],
         ])
         await query.edit_message_text(
-            "✅ Guardado.\n\n<b>Paso 3/6</b> — ¿Cuánta experiencia tienes en el gym?\n"
-            "<i>Sé honesto/a, esto cambia completamente el programa.</i>",
+            "✅ Guardado.\n\n<b>Paso 3/5</b> — ¿Qué ejercicios puedes hacer bien?\n"
+            "<i>Esto define la dificultad de tus ejercicios — no la cantidad. "
+            "principiante=3 series · intermedio=4 · avanzado=5. Siempre 4 ejercicios+cardio.</i>",
             reply_markup=teclado, parse_mode="HTML"
         )
         return
@@ -1809,7 +2190,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("💪 Hombro lesionado",        callback_data="lim:hombro")],
         ])
         await query.edit_message_text(
-            "✅ Nivel guardado.\n\n<b>Paso 4/6</b> — ¿Tienes alguna limitación física?\n"
+            "✅ Nivel guardado.\n\n<b>Paso 4/5</b> — ¿Tienes alguna limitación física?\n"
             "<i>Esto ajusta los ejercicios para que sean seguros para ti.</i>",
             reply_markup=teclado, parse_mode="HTML"
         )
@@ -1887,23 +2268,16 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(paso, parse_mode="HTML")
             await asyncio.sleep(3)
 
-        # Cargar perfil completo
+        # Cargar perfil completo en una sola query (FIX: antes eran 2 conexiones separadas)
         conn2 = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
-        cur2 = conn2.cursor()
-        cur2.execute("SELECT nivel, limitaciones, duracion_min FROM perfil_usuario WHERE user_id = ?", (user_id,))
+        cur2  = conn2.cursor()
+        cur2.execute("SELECT nivel, limitaciones, duracion_min, genero FROM perfil_usuario WHERE user_id = ?", (user_id,))
         row2 = cur2.fetchone()
         conn2.close()
         nivel        = row2[0] if row2 else "principiante"
         limitaciones = row2[1] if row2 else "ninguna"
         duracion_min = row2[2] if row2 else 60
-
-        # Cargar también género
-        conn3 = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
-        cur3  = conn3.cursor()
-        cur3.execute("SELECT genero FROM perfil_usuario WHERE user_id = ?", (user_id,))
-        row3 = cur3.fetchone()
-        conn3.close()
-        genero = row3[0] if row3 else "mujer"
+        genero       = row2[3] if row2 else "mujer"
 
         perfil = {"objetivo": objetivo, "dias": int(dias), "nivel": nivel,
                   "limitaciones": limitaciones, "duracion_min": duracion_min, "genero": genero}
@@ -2122,6 +2496,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==========================================
 def main():
     init_db()
+    cargar_usuarios_permitidos()   # FIX: carga ALLOWED_USERS desde DB al arrancar
     token = os.environ.get("TELEGRAM_TOKEN")
     if not token:
         logger.error("❌ Falta TELEGRAM_TOKEN en las variables de entorno.")
@@ -2144,6 +2519,9 @@ def main():
     app.add_handler(CommandHandler("reset_plan",   reset_plan_handler))
     app.add_handler(CommandHandler("reset_swaps",  reset_swaps_handler))
     app.add_handler(CommandHandler("adduser",    adduser_handler))
+    app.add_handler(CallbackQueryHandler(fat_callback_handler,      pattern="^fat:"))
+    app.add_handler(CallbackQueryHandler(reporte_fatiga_handler,    pattern="^ver_fatiga$"))
+    app.add_handler(CallbackQueryHandler(volumen_handler,           pattern="^ver_volumen$"))
     app.add_handler(CallbackQueryHandler(callback_router))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, gemini_coach_handler))
     app.add_error_handler(error_handler)
