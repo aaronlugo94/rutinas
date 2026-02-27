@@ -2269,6 +2269,27 @@ async def progresion_respuesta_handler(update: Update, context: ContextTypes.DEF
         reply_markup=teclado, parse_mode="HTML"
     )
 
+async def reporte_fatiga_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Entrada manual desde el menú: muestra selector de fatiga post-sesión."""
+    if not await check_auth(update): return
+    query = update.callback_query
+    await query.answer()
+    user_id = update.effective_user.id
+    semana, dia = obtener_semana_y_dia_actual(user_id)
+    teclado = InlineKeyboardMarkup([
+        [InlineKeyboardButton("😊 Fresco (1)",   callback_data=f"fat:{semana}:{dia}:1"),
+         InlineKeyboardButton("🙂 Leve (2)",     callback_data=f"fat:{semana}:{dia}:2")],
+        [InlineKeyboardButton("😐 Moderada (3)", callback_data=f"fat:{semana}:{dia}:3"),
+         InlineKeyboardButton("😓 Alta (4)",     callback_data=f"fat:{semana}:{dia}:4")],
+        [InlineKeyboardButton("💀 Crítica (5)",  callback_data=f"fat:{semana}:{dia}:5")],
+    ])
+    await query.edit_message_text(
+        "💪 <b>¿Cómo quedaste hoy?</b>\n\n"
+        "Reporta tu fatiga para que el sistema ajuste la próxima sesión si es necesario.",
+        reply_markup=teclado, parse_mode="HTML"
+    )
+
+
 async def fat_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Procesa fatiga — cierra el flujo post-sesión de 3 pasos.
