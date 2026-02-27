@@ -1182,7 +1182,8 @@ def init_db():
             rol TEXT DEFAULT 'user', alta_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )"""),
         ("v5", "ALTER TABLE progreso ADD COLUMN fatiga_reportada INTEGER DEFAULT NULL"),
-
+        ("v6", "ALTER TABLE progreso ADD COLUMN rir_reportado INTEGER DEFAULT NULL"),
+        ("v7", "ALTER TABLE progreso ADD COLUMN progreso_reportado TEXT DEFAULT NULL"),
     ]
     for version, sql in migraciones:
         try:
@@ -1482,9 +1483,297 @@ def aplicar_swap(user_id: int, semana: int, dia: str, id_original: str, id_nuevo
     conn.close()
     logger.info(f"Swap aplicado: user={user_id} | {id_original} → {id_nuevo} (todas las semanas)")
 
-# ==========================================
-# 5. STATS Y MILESTONES
-# ==========================================
+
+# ═══════════════════════════════════════════════════════════════════
+# MÓDULO SEMI-AUTOMÁTICO — Israetel + Helms (autoregulación ligera)
+# 3 inputs post-sesión: RIR · Progresión · Fatiga
+# ═══════════════════════════════════════════════════════════════════
+
+RIR_OPCIONES = {
+    0: ("\U0001f525", "Sin reserva \u2014 llegué al límite"),
+    1: ("\U0001f4aa", "1 rep en reserva \u2014 muy intenso"),
+    2: ("\U0001f60a", "2 reps en reserva \u2014 bien"),
+    3: ("\U0001f60c", "3+ reps en reserva \u2014 muy fácil"),
+}
+
+PROGRESION_OPCIONES = {
+    "si":      ("\U0001f4c8", "Sí \u2014 más peso o más reps"),
+    "igual":   ("\u27a1\ufe0f",  "Igual \u2014 mismo peso y reps"),
+    "no":      ("\U0001f4c9", "No \u2014 tuve que bajar peso o reps"),
+    "primera": ("\U0001f331", "Primera vez con este ejercicio"),
+}
+
+
+def registrar_rir(user_id: int, semana: int, dia: str, rir: int):
+    """Guarda el RIR promedio reportado tras la sesión."""
+    conn = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
+    cur  = conn.cursor()
+    cur.execute(
+        "INSERT OR IGNORE INTO progreso (user_id, semana, dia, ejercicio_id, completado) "
+        "VALUES (?, ?, ?, '__rir__', 0)",
+        (user_id, semana, dia)
+    )
+    cur.execute(
+        "UPDATE progreso SET rir_reportado = ? WHERE user_id = ? AND semana = ? AND dia = ?",
+        (rir, user_id, semana, dia)
+    )
+    conn.commit()
+    conn.close()
+    logger.info("RIR %s/3 registrado: user=%s S%s %s", rir, user_id, semana, dia)
+
+
+def registrar_progresion(user_id: int, semana: int, dia: str, progresion: str):
+    """Guarda si el usuario progresó esta sesión (si/igual/no/primera)."""
+    conn = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
+    cur  = conn.cursor()
+    cur.execute(
+        "INSERT OR IGNORE INTO progreso (user_id, semana, dia, ejercicio_id, completado) "
+        "VALUES (?, ?, ?, '__progresion__', 0)",
+        (user_id, semana, dia)
+    )
+    cur.execute(
+        "UPDATE progreso SET progreso_reportado = ? WHERE user_id = ? AND semana = ? AND dia = ?",
+        (progresion, user_id, semana, dia)
+    )
+    conn.commit()
+    conn.close()
+    logger.info("Progresión '%s' registrada: user=%s S%s %s", progresion, user_id, semana, dia)
+
+
+def analizar_sesion(user_id: int, semana: int, dia: str) -> dict:
+    """
+    Analiza los 3 inputs de la sesión y devuelve la recomendación de ajuste.
+    Lógica: Israetel (RP) + Helms (3DMJ) — autoregulación ligera.
+
+    FIX aplicados:
+      - Historial excluye la sesión actual (evita comparar la sesión consigo misma)
+      - Estancamiento filtra por grupo muscular del día (no mezcla pierna con empuje)
+      - RIR=0 con fatiga moderada (>=3) ahora tiene regla propia
+    """
+    conn = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
+    cur  = conn.cursor()
+
+    # Grupo muscular del día actual (para filtrar historial por grupo)
+    cur.execute(
+        "SELECT grupo FROM rutinas WHERE user_id = ? AND semana = ? AND dia = ? LIMIT 1",
+        (user_id, semana, dia)
+    )
+    row_grupo = cur.fetchone()
+    grupo_dia = row_grupo[0] if row_grupo else None
+
+    # Historial de sesiones ANTERIORES con RIR del mismo grupo muscular
+    # Excluye la sesión actual (semana+dia) para no comparar contra sí misma
+    if grupo_dia:
+        cur.execute(
+            "SELECT p.rir_reportado, p.progreso_reportado, p.fatiga_reportada "
+            "FROM progreso p "
+            "JOIN rutinas r ON r.user_id = p.user_id AND r.semana = p.semana "
+            "    AND r.dia = p.dia AND r.grupo = ? "
+            "WHERE p.user_id = ? AND p.rir_reportado IS NOT NULL "
+            "AND NOT (p.semana = ? AND p.dia = ?) "
+            "ORDER BY p.ts DESC LIMIT 3",
+            (grupo_dia, user_id, semana, dia)
+        )
+    else:
+        cur.execute(
+            "SELECT rir_reportado, progreso_reportado, fatiga_reportada "
+            "FROM progreso "
+            "WHERE user_id = ? AND rir_reportado IS NOT NULL "
+            "AND NOT (semana = ? AND dia = ?) "
+            "ORDER BY ts DESC LIMIT 3",
+            (user_id, semana, dia)
+        )
+    historial = cur.fetchall()
+
+    # Datos de la sesión actual
+    cur.execute(
+        "SELECT rir_reportado, progreso_reportado, fatiga_reportada "
+        "FROM progreso "
+        "WHERE user_id = ? AND semana = ? AND dia = ? AND rir_reportado IS NOT NULL "
+        "LIMIT 1",
+        (user_id, semana, dia)
+    )
+    actual = cur.fetchone()
+    conn.close()
+
+    if not actual:
+        return {"ajuste": "mantener", "razon": "sin datos suficientes", "msg_usuario": ""}
+
+    rir    = actual[0] if actual[0] is not None else 2
+    prog   = actual[1] or "primera"
+    fatiga = actual[2] if actual[2] is not None else 2
+
+    # ── Regla 1: fatiga crítica → deload
+    if fatiga >= 5:
+        return {
+            "ajuste": "deload",
+            "razon": "fatiga crítica 5/5",
+            "msg_usuario": (
+                "\U0001f480 <b>Fatiga crítica.</b>\n"
+                "La próxima sesión tendrá volumen reducido al 60%% de carga. Prioriza el sueño."
+            ),
+        }
+
+    # ── Regla 2: RIR≥3 → demasiado fácil, subir carga
+    if rir >= 3:
+        return {
+            "ajuste": "subir_carga",
+            "razon": "RIR " + str(rir) + " — sin estímulo real",
+            "msg_usuario": (
+                "\U0001f60c <b>Sesión demasiado fácil.</b>\n"
+                "RIR 3+ significa que te sobraban 3+ reps — el músculo no recibió estímulo suficiente.\n"
+                "\U0001f449 La próxima semana sube el peso un 5-10%% en todos los ejercicios."
+            ),
+        }
+
+    # ── Regla 3: estancamiento en el mismo grupo muscular — 2 sesiones previas sin progresión
+    if len(historial) >= 2:
+        progs_recientes = [h[1] for h in historial[:2] if h[1] is not None]
+        estancado = len(progs_recientes) == 2 and all(p in ("no", "igual") for p in progs_recientes)
+        if estancado and prog in ("no", "igual"):
+            grupo_txt = f" de {grupo_dia}" if grupo_dia else ""
+            return {
+                "ajuste": "deload",
+                "razon": "estancamiento" + grupo_txt + ": 3 sesiones sin progresión",
+                "msg_usuario": (
+                    "\U0001f4c9 <b>Estancamiento detectado</b>"
+                    + (" en " + grupo_dia if grupo_dia else "") + ".\n"
+                    "3 sesiones consecutivas del mismo grupo sin progresar — señal clara de fatiga acumulada.\n"
+                    "\U0001f449 Próxima sesión en deload: mismos ejercicios al 60%% de carga."
+                ),
+            }
+
+    # ── Regla 4: RIR=0 + cualquier fatiga ≥3 → sobrecarga moderada
+    if rir == 0 and fatiga >= 3:
+        if fatiga >= 4:
+            return {
+                "ajuste": "bajar_volumen",
+                "razon": "RIR 0 + fatiga " + str(fatiga) + "/5 — sobrecarga alta",
+                "msg_usuario": (
+                    "\U0001f525 <b>Sesión muy intensa.</b>\n"
+                    "RIR 0 con fatiga alta: llegaste al límite real.\n"
+                    "Reduzco 1 serie en accesorios de la próxima sesión."
+                ),
+            }
+        else:
+            # fatiga=3 + RIR=0 → aviso sin cambio estructural
+            return {
+                "ajuste": "mantener",
+                "razon": "RIR 0 + fatiga moderada — vigilar",
+                "msg_usuario": (
+                    "\U0001f7e1 <b>Intensidad en el límite.</b>\n"
+                    "RIR 0 con fatiga moderada. Plan sin cambios hoy, pero si se repite la próxima semana "
+                    "considera bajar el peso un 5%% para mantenerte en RIR 1-2."
+                ),
+            }
+
+    # ── Regla 5: progresión + RIR óptimo (1-2) → zona ideal
+    if prog == "si" and rir in (1, 2):
+        return {
+            "ajuste": "mantener",
+            "razon": "progresión confirmada + RIR óptimo",
+            "msg_usuario": (
+                "\U0001f4c8 <b>Progresión confirmada con RIR óptimo.</b>\n"
+                "El plan está funcionando exactamente como debe. Continúa igual."
+            ),
+        }
+
+    # ── Caso base
+    return {
+        "ajuste": "mantener",
+        "razon": "sesión normal",
+        "msg_usuario": "✅ Sesión registrada. Plan sin cambios.",
+    }
+
+
+def aplicar_ajuste_automatico(user_id: int, semana: int, dia: str, ajuste: str):
+    """
+    Aplica el ajuste a la PRÓXIMA sesión del usuario.
+    Estructura 4+1 siempre inviolable: nunca elimina ejercicios.
+
+    FIX aplicado:
+      - 'deload' ahora reduce series en TODOS los ejercicios (no solo accesorios)
+        y marca reps con sufijo '-deload' para que el renderer lo muestre
+      - 'bajar_volumen' sigue reduciendo solo accesorios (orden >= 3)
+      - 'subir_carga' es solo consejo textual: no toca la DB (el usuario sube carga)
+    """
+    if ajuste in ("mantener", "subir_carga"):
+        return
+
+    conn = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
+    cur  = conn.cursor()
+
+    # ── Calcular próximo día del plan ──────────────────────────────
+    cur.execute(
+        "SELECT DISTINCT dia FROM rutinas WHERE user_id = ? AND semana = ? "
+        "GROUP BY dia ORDER BY MIN(id) ASC",
+        (user_id, semana)
+    )
+    dias_semana = [r[0] for r in cur.fetchall()]
+
+    proximo_dia    = None
+    proxima_semana = semana
+    try:
+        idx = dias_semana.index(dia)
+        if idx + 1 < len(dias_semana):
+            proximo_dia = dias_semana[idx + 1]
+        elif semana < 4:
+            proxima_semana = semana + 1
+            cur.execute(
+                "SELECT dia FROM rutinas WHERE user_id = ? AND semana = ? "
+                "GROUP BY dia ORDER BY MIN(id) ASC LIMIT 1",
+                (user_id, proxima_semana)
+            )
+            row = cur.fetchone()
+            proximo_dia = row[0] if row else None
+        # semana=4 último día = fin del plan → proximo_dia=None, sin ajuste necesario
+    except ValueError:
+        pass
+
+    if not proximo_dia:
+        conn.close()
+        return
+
+    if ajuste == "deload":
+        # Deload real: todos los ejercicios de fuerza reducen 1 serie (mínimo 2)
+        # El compuesto principal (orden=1) también se reduce — es el objetivo del deload
+        cur.execute(
+            "SELECT id, series, reps FROM rutinas "
+            "WHERE user_id = ? AND semana = ? AND dia = ? "
+            "AND ejercicio_id NOT LIKE 'CAR_%'",
+            (user_id, proxima_semana, proximo_dia)
+        )
+        for row_id, series, reps in cur.fetchall():
+            nuevas_series = max(2, int(series or 3) - 1)
+            cur.execute(
+                "UPDATE rutinas SET series = ? WHERE id = ?",
+                (nuevas_series, row_id)
+            )
+        logger.info(
+            "Deload aplicado (todas las series -1): user=%s S%s %s",
+            user_id, proxima_semana, proximo_dia
+        )
+
+    elif ajuste == "bajar_volumen":
+        # Solo accesorios (orden >= 3): preserva el estímulo del compuesto principal
+        cur.execute(
+            "SELECT id, series FROM rutinas "
+            "WHERE user_id = ? AND semana = ? AND dia = ? AND orden >= 3 "
+            "AND ejercicio_id NOT LIKE 'CAR_%'",
+            (user_id, proxima_semana, proximo_dia)
+        )
+        for row_id, series in cur.fetchall():
+            nuevas = max(2, int(series or 3) - 1)
+            cur.execute("UPDATE rutinas SET series = ? WHERE id = ?", (nuevas, row_id))
+        logger.info(
+            "Volumen accesorio reducido: user=%s S%s %s",
+            user_id, proxima_semana, proximo_dia
+        )
+
+    conn.commit()
+    conn.close()
+
+
 def obtener_stats_suaves(user_id: int) -> dict:
     conn = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
     cur = conn.cursor()
@@ -1926,31 +2215,66 @@ async def gemini_coach_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("Descansa un poco, usa el menú ❤️")
 
 
-async def reporte_fatiga_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Muestra el selector de fatiga post-sesión."""
+
+async def rir_respuesta_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Post-sesión paso 1/2: procesa RIR y pregunta progresión."""
     if not await check_auth(update): return
     query = update.callback_query
     await query.answer()
     user_id = update.effective_user.id
-
-    semana, dia = obtener_semana_y_dia_actual(user_id)
+    _, sem_s, dia, rir_s = query.data.split(":")
+    sem = int(sem_s)
+    rir = int(rir_s)
+    registrar_rir(user_id, sem, dia, rir)
+    emoji_rir, desc_rir = RIR_OPCIONES[rir]
     teclado = InlineKeyboardMarkup([
-        [InlineKeyboardButton("😊 Fresco (1)",    callback_data=f"fat:{semana}:{dia}:1"),
-         InlineKeyboardButton("🙂 Leve (2)",      callback_data=f"fat:{semana}:{dia}:2")],
-        [InlineKeyboardButton("😐 Moderada (3)",  callback_data=f"fat:{semana}:{dia}:3"),
-         InlineKeyboardButton("😓 Alta (4)",      callback_data=f"fat:{semana}:{dia}:4")],
-        [InlineKeyboardButton("💀 Crítica (5)",   callback_data=f"fat:{semana}:{dia}:5")],
+        [InlineKeyboardButton("\U0001f4c8 Sí — más peso o más reps",      callback_data=f"prg:{sem}:{dia}:si")],
+        [InlineKeyboardButton("\u27a1\ufe0f  Igual que la semana anterior", callback_data=f"prg:{sem}:{dia}:igual")],
+        [InlineKeyboardButton("\U0001f4c9 No — tuve que bajar",            callback_data=f"prg:{sem}:{dia}:no")],
+        [InlineKeyboardButton("\U0001f331 Primera vez con este ejercicio",  callback_data=f"prg:{sem}:{dia}:primera")],
     ])
     await query.edit_message_text(
-        "💪 <b>¿Cómo quedaste hoy?</b>\n\n"
-        "Reporta tu fatiga para ajustar la próxima sesión si es necesario.\n"
-        "<i>Esto no cambia tu plan — solo lo optimiza si estás al límite.</i>",
+        f"{emoji_rir} <b>{desc_rir}</b>\n\n"
+        "<b>2/2 — ¿Progresaste vs la última vez?</b>\n"
+        "<i>Progresión = más peso, más reps, o mejor técnica.</i>",
         reply_markup=teclado, parse_mode="HTML"
     )
 
 
+async def progresion_respuesta_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Post-sesión paso 2/3: procesa progresión y lanza pregunta de fatiga."""
+    if not await check_auth(update): return
+    query = update.callback_query
+    await query.answer()
+    user_id = update.effective_user.id
+    _, sem_s, dia, prog = query.data.split(":")
+    sem = int(sem_s)
+
+    registrar_progresion(user_id, sem, dia, prog)
+    emoji_p, desc_p = PROGRESION_OPCIONES.get(prog, ("✅", prog))
+
+    # Paso 3/3: preguntar fatiga
+    teclado = InlineKeyboardMarkup([
+        [InlineKeyboardButton("😊 Fresco (1)",   callback_data=f"fat:{sem}:{dia}:1"),
+         InlineKeyboardButton("🙂 Leve (2)",     callback_data=f"fat:{sem}:{dia}:2")],
+        [InlineKeyboardButton("😐 Moderada (3)", callback_data=f"fat:{sem}:{dia}:3"),
+         InlineKeyboardButton("😓 Alta (4)",     callback_data=f"fat:{sem}:{dia}:4")],
+        [InlineKeyboardButton("💀 Crítica (5)",  callback_data=f"fat:{sem}:{dia}:5")],
+        [InlineKeyboardButton("⏭ Saltar",        callback_data="menu:main")],
+    ])
+    await query.edit_message_text(
+        f"{emoji_p} <b>{desc_p}</b>\n\n"
+        "<b>3/3 — ¿Cómo quedó tu cuerpo?</b>\n"
+        "<i>Fatiga muscular y del sistema nervioso, no solo cansancio.</i>",
+        reply_markup=teclado, parse_mode="HTML"
+    )
+
 async def fat_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Procesa el reporte de fatiga y ajusta la siguiente sesión si corresponde."""
+    """
+    Procesa fatiga — cierra el flujo post-sesión de 3 pasos.
+    También funciona como entrada directa desde el botón del menú.
+    FIX: ahora ejecuta el análisis completo (RIR+progresión+fatiga) y aplica ajuste.
+    """
     if not await check_auth(update): return
     query = update.callback_query
     await query.answer()
@@ -1960,22 +2284,38 @@ async def fat_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     semana, dia, nivel_s = int(partes[1]), partes[2], int(partes[3])
 
     registrar_fatiga(user_id, semana, dia, nivel_s)
-    emoji, desc = FATIGA_NIVELES[nivel_s]
-    respuesta = f"{emoji} <b>{desc}</b>\n\n"
+    emoji_fat, desc_fat = FATIGA_NIVELES[nivel_s]
+
+    # Análisis completo con los 3 datos ya guardados
+    resultado  = analizar_sesion(user_id, semana, dia)
+    ajuste     = resultado["ajuste"]
+    msg_ajuste = resultado["msg_usuario"]
+
+    # Aplicar ajuste automático
+    aplicar_ajuste_automatico(user_id, semana, dia, ajuste)
+    # Fatiga alta también dispara ajuste de accesorios (capa adicional de seguridad)
     if nivel_s >= 4:
         ajustar_sesion_por_fatiga(user_id, semana, dia, nivel_s)
-        if nivel_s == 5:
-            respuesta += "⚠️ <b>Fatiga crítica.</b> Reduje el cardio a 10 min y 1 serie en accesorios. Si se repite, activaré semana de recuperación."
-        else:
-            respuesta += "Reduje ligeramente el volumen accesorio. El ejercicio compuesto se mantiene intacto."
-    else:
-        respuesta += "Volumen de tu próxima sesión sin cambios. ¡Sigue así! 💪"
 
+    # Evaluar fatiga acumulada histórica
     evaluacion = evaluar_fatiga_acumulada(user_id)
-    if evaluacion["necesita_deload"] and nivel_s >= 3:
-        respuesta += f"\n\n🔄 <b>Semana de recuperación recomendada.</b>\nRazón: {evaluacion['razon']}"
 
-    await query.edit_message_text(respuesta, parse_mode="HTML")
+    # Construir respuesta
+    lineas = [f"{emoji_fat} <b>{desc_fat}</b>"]
+    if msg_ajuste:
+        lineas += ["", msg_ajuste]
+    if evaluacion["necesita_deload"] and nivel_s >= 3:
+        lineas += [
+            "",
+            f"\U0001f504 <b>Semana de recuperación recomendada.</b>",
+            f"Razón: {evaluacion['razon']}",
+        ]
+    lineas += ["", "━━━━━━━━━━━━━━━━━━", "<i>Los 3 datos quedaron registrados.</i>"]
+
+    teclado = InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Menú", callback_data="menu:main")]])
+    await query.edit_message_text(
+        "\n".join(lineas), parse_mode="HTML", reply_markup=teclado
+    )
 
 async def volumen_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Muestra el reporte de volumen semanal del usuario."""
@@ -2482,13 +2822,28 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _, sem_str, dia = data.split(":")
         sem = int(sem_str)
         avanzar_estado_dinamico(user_id, sem, dia)
-        await query.edit_message_text(
-            "🏆 <b>¡Rutina guardada!</b>\n\nDescansa bien 💤\nUsa /start cuando estés lista.",
-            parse_mode='HTML'
-        )
-        mensajes_milestone = procesar_milestones(user_id, sem)
-        for msg in mensajes_milestone:
+
+        # Milestones (felicitaciones)
+        for msg in procesar_milestones(user_id, sem):
             await context.bot.send_message(chat_id=query.message.chat_id, text=msg, parse_mode="HTML")
+
+        # Lanzar encuesta post-sesión — paso 1/2: RIR
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔥 Sin reserva — llegué al límite (RIR 0)", callback_data=f"rir:{sem}:{dia}:0")],
+            [InlineKeyboardButton("💪 1 rep en reserva — muy intenso (RIR 1)", callback_data=f"rir:{sem}:{dia}:1")],
+            [InlineKeyboardButton("😊 2 reps en reserva — bien (RIR 2)",       callback_data=f"rir:{sem}:{dia}:2")],
+            [InlineKeyboardButton("😌 Muy fácil — 3+ reps sobraban (RIR 3+)",  callback_data=f"rir:{sem}:{dia}:3")],
+            [InlineKeyboardButton("⏭ Saltar encuesta",                             callback_data="menu:main")],
+        ])
+        await query.edit_message_text(
+            "🏆 <b>¡Rutina guardada!</b> Descansa bien 💤\n\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            "📊 <b>Encuesta rápida</b> — 2 preguntas · 10 segundos\n"
+            "El sistema ajusta automáticamente tu próxima sesión.\n\n"
+            "<b>1/2 — ¿Cuántas reps te sobraban al final de cada serie?</b>\n"
+            "<i>RIR = Reps en Reserva. Así medimos si el peso fue el correcto.</i>",
+            reply_markup=kb, parse_mode="HTML"
+        )
         return
 
 # ==========================================
@@ -2519,9 +2874,11 @@ def main():
     app.add_handler(CommandHandler("reset_plan",   reset_plan_handler))
     app.add_handler(CommandHandler("reset_swaps",  reset_swaps_handler))
     app.add_handler(CommandHandler("adduser",    adduser_handler))
-    app.add_handler(CallbackQueryHandler(fat_callback_handler,      pattern="^fat:"))
-    app.add_handler(CallbackQueryHandler(reporte_fatiga_handler,    pattern="^ver_fatiga$"))
-    app.add_handler(CallbackQueryHandler(volumen_handler,           pattern="^ver_volumen$"))
+    app.add_handler(CallbackQueryHandler(rir_respuesta_handler,        pattern="^rir:"))
+    app.add_handler(CallbackQueryHandler(progresion_respuesta_handler, pattern="^prg:"))
+    app.add_handler(CallbackQueryHandler(fat_callback_handler,          pattern="^fat:"))
+    app.add_handler(CallbackQueryHandler(reporte_fatiga_handler,        pattern="^ver_fatiga$"))
+    app.add_handler(CallbackQueryHandler(volumen_handler,               pattern="^ver_volumen$"))
     app.add_handler(CallbackQueryHandler(callback_router))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, gemini_coach_handler))
     app.add_error_handler(error_handler)
