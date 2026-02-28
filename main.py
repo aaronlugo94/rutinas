@@ -2304,19 +2304,18 @@ async def check_auth(update: Update) -> bool:
     return True
 
 MENU_PRINCIPAL = InlineKeyboardMarkup([
-    [InlineKeyboardButton("🏋️ Ver rutina de hoy",    callback_data="menu:hoy")],
+    [InlineKeyboardButton("🏋️  Rutina de hoy",          callback_data="menu:hoy")],
+    [InlineKeyboardButton("📊 Mi progreso muscular",  callback_data="ver_volumen")],
     [InlineKeyboardButton("📅 Ver plan completo",     callback_data="menu:plan")],
-    [InlineKeyboardButton("📊 Volumen semanal",       callback_data="ver_volumen")],
-    [InlineKeyboardButton("😓 Reportar fatiga",       callback_data="ver_fatiga")],
+    [InlineKeyboardButton("😴 Estoy muy cansado/a",  callback_data="ver_fatiga")],
     [InlineKeyboardButton("🆕 Crear nuevo plan",      callback_data="menu:nuevo")],
-    [InlineKeyboardButton("🔄 Resetear preferencias", callback_data="menu:swaps")],
 ])
 
 async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando /menu — todos los botones sin escribir comandos."""
     if not await check_auth(update): return
     await update.message.reply_text(
-        "🏠 <b>¿Qué quieres hacer?</b>",
+        "🏋️ <b>GymCoach</b>",
         reply_markup=MENU_PRINCIPAL, parse_mode="HTML"
     )
 
@@ -2332,26 +2331,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not tiene_plan:
         intro = (
-            "🏋️ <b>GymCoach AI</b> — Tu entrenador personal inteligente\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "🧬 <b>¿Qué hay detrás?</b>\n"
-            "Este bot usa <b>Gemini AI</b> + ciencia del ejercicio de élite para crear\n"
-            "un programa <i>único para ti</i>, no genérico.\n\n"
-            "📚 <b>Ciencia aplicada:</b>\n"
-            "  • <b>Schoenfeld (2016)</b> — frecuencia 2x/semana por grupo muscular\n"
-            "  • <b>Contreras (2015)</b> — orden por activación EMG (hip thrust primero)\n"
-            "  • <b>Nippard</b> — progresión real: 15→12→10→8 reps con carga creciente\n"
-            "  • <b>McGill</b> — calentamiento específico por grupo, no genérico\n\n"
-            "🎯 <b>¿Cómo funciona?</b>\n"
-            "  1️⃣ Me dices tu objetivo y nivel (6 preguntas rápidas)\n"
-            "  2️⃣ La IA genera tu plan de <b>4 semanas</b> personalizado\n"
-            "  3️⃣ Cada día ves tu rutina con calentamiento específico\n"
-            "  4️⃣ Marca ejercicios ✅ · Cambia los que no te gusten 🔄\n"
-            "  5️⃣ El plan progresa solo cada semana\n\n"
-            "⏱ <i>Crear tu plan toma ~45 segundos</i>\n"
+            "🏋️ <b>GymCoach</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "La mayoría de planes fallan por dos razones:\n"
+            "<b>muy poco volumen para crecer, o demasiado para recuperarse.</b>\n\n"
+            "Este bot resuelve eso automáticamente:\n\n"
+            "✔ <b>Frecuencia 2× por músculo</b> — la ciencia muestra que entrenar\n"
+            "   cada grupo dos veces por semana duplica el estímulo vs un split clásico\n\n"
+            "✔ <b>Volumen que progresa solo</b> — el plan sube de intensidad\n"
+            "   semana a semana sin que tengas que calcular nada\n\n"
+            "✔ <b>Se adapta a tu cuerpo</b> — si detecta cansancio acumulado,\n"
+            "   reduce carga automáticamente para que sigas progresando\n\n"
+            "✔ <b>Sin riesgo de sobreentrenamiento</b> — cada 4 semanas\n"
+            "   el plan descansa y luego reinicia más fuerte\n\n"
+            "⏱ <i>5 preguntas · tu plan listo en 45 segundos</i>"
         )
         teclado = InlineKeyboardMarkup([[
-            InlineKeyboardButton("🚀 Crear mi plan personalizado", callback_data="obj:inicio")
+            InlineKeyboardButton("🎯 Empezar — 5 preguntas rápidas", callback_data="obj:inicio")
         ]])
         await update.message.reply_text(intro, reply_markup=teclado, parse_mode="HTML")
         return
@@ -2367,23 +2363,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bloques = min(10, stats["total_ejercicios"] // 10)
         barra = "🟩" * bloques + "⬜" * (10 - bloques)
         bloque = (
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"  🏋️ <b>GymCoach AI</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"📊 <b>Tu progreso</b>\n"
-            f"  {barra}\n"
-            f"  🔥 <b>{stats['total_ejercicios']}</b> ejercicios completados\n"
-            f"  📆 Esta semana: <b>{stats['ejercicios_semana']}</b>\n"
-            f"  🏆 Rutinas completas: <b>{stats['rutinas_completas']}</b>\n\n"
-            f"───────────────────────────\n"
+            f"🏋️ <b>GymCoach</b> · S{semana}\n"
+            f"{barra} {stats['total_ejercicios']} ejercicios\n"
+            f"🏆 {stats['rutinas_completas']} rutinas completas\n\n"
         )
     else:
         bloque = (
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"  🏋️ <b>GymCoach AI</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"✨ <b>¡Primera rutina!</b> Ya empezaste — lo más difícil es esto.\n\n"
-            f"───────────────────────────\n"
+            f"🏋️ <b>GymCoach</b>\n"
+            f"✨ <b>¡Primera sesión!</b> Ya empezaste — lo más difícil es esto.\n\n"
         )
 
     await update.message.reply_text(
@@ -2527,8 +2514,8 @@ async def reporte_fatiga_handler(update: Update, context: ContextTypes.DEFAULT_T
         [InlineKeyboardButton("💀 Crítica (5)",  callback_data=f"fat:{semana}:{dia}:5")],
     ])
     await query.edit_message_text(
-        "💪 <b>¿Cómo quedaste hoy?</b>\n\n"
-        "Reporta tu fatiga para que el sistema ajuste la próxima sesión si es necesario.",
+        "💬 <b>¿Qué tan cansado estás hoy?</b>\n"
+        "<i>Si estás muy cansado, el sistema reduce el volumen de mañana.</i>",
         reply_markup=teclado, parse_mode="HTML"
     )
 
@@ -2574,7 +2561,16 @@ async def fat_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             f"\U0001f504 <b>Semana de recuperación recomendada.</b>",
             f"Razón: {evaluacion['razon']}",
         ]
-    lineas += ["", "━━━━━━━━━━━━━━━━━━", "<i>Los 3 datos quedaron registrados.</i>"]
+    # Mensaje de cierre según nivel de ajuste
+    if ajuste == "mantener":
+        cierre = "<i>El plan sigue igual para la próxima sesión. ¡A descansar!</i>"
+    elif ajuste == "subir_carga":
+        cierre = "<i>El plan te recuerda subir el peso un 5-10%% la próxima vez.</i>"
+    elif ajuste == "bajar_volumen":
+        cierre = "<i>Reduízco 1 serie en accesorios de tu próxima sesión.</i>"
+    else:
+        cierre = "<i>Siguiente sesión con carga reducida para que te recuperes bien.</i>"
+    lineas += ["", cierre]
 
     teclado = InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Menú", callback_data="menu:main")]])
     await query.edit_message_text(
@@ -2687,7 +2683,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif accion == "main":
             await query.answer()
             await query.edit_message_text(
-                "🏠 <b>Menú principal</b>\n¿Qué quieres hacer?",
+                "🏋️ <b>GymCoach</b>",
                 reply_markup=MENU_PRINCIPAL, parse_mode="HTML"
             )
 
@@ -2748,8 +2744,8 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("👨 Hombre", callback_data="gen:hombre")],
         ])
         await query.edit_message_text(
-            "✅ Objetivo guardado.\n\n<b>Paso 2/5</b> — ¿Cuál es tu género?\n"
-            "<i>Esto ajusta el énfasis muscular del programa.</i>",
+            "<b>2 de 5</b> — ¿Eres hombre o mujer?\n"
+            "<i>El plan ajusta el énfasis muscular según esto.</i>",
             reply_markup=teclado, parse_mode="HTML"
         )
         return
@@ -2774,9 +2770,10 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🔥 Avanzado — barra libre, sentadilla búlgara, dominadas",  callback_data="niv:avanzado")],
         ])
         await query.edit_message_text(
-            "✅ Guardado.\n\n<b>Paso 3/5</b> — ¿Qué ejercicios puedes hacer bien?\n"
-            "<i>Esto define la dificultad de tus ejercicios — no la cantidad. "
-            "principiante=3 series · intermedio=4 · avanzado=5. Siempre 4 ejercicios+cardio.</i>",
+            "<b>3 de 5</b> — ¿Cuál es tu nivel?\n"
+            "<i>Principiante: máquinas y movimientos simples (3 series)\n"
+            "Intermedio: mancuernas y ejercicios unilaterales (4 series)\n"
+            "Avanzado: barra libre, sentadilla búlgara (5 series)</i>",
             reply_markup=teclado, parse_mode="HTML"
         )
         return
@@ -2802,8 +2799,8 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("💪 Hombro lesionado",        callback_data="lim:hombro")],
         ])
         await query.edit_message_text(
-            "✅ Nivel guardado.\n\n<b>Paso 4/5</b> — ¿Tienes alguna limitación física?\n"
-            "<i>Esto ajusta los ejercicios para que sean seguros para ti.</i>",
+            "<b>4 de 5</b> — ¿Tienes alguna limitación física?\n"
+            "<i>Dilo y el plan evita ejercicios que puedan dañarte.</i>",
             reply_markup=teclado, parse_mode="HTML"
         )
         return
@@ -2829,8 +2826,8 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("5️⃣  5 días — volumen avanzado",     callback_data="dias:5")],
         ])
         await query.edit_message_text(
-            "✅ Listo.\n\n<b>Paso 5/5</b> — ¿Cuántos días por semana entrenas?\n"
-            "<i>Más días = más volumen semanal. 4 días consistentes supera 5 irregulares.</i>",
+            "<b>5 de 5</b> — ¿Cuántos días por semana?\n"
+            "<i>4 días consistentes dan mejores resultados que 5 irregulares.</i>",
             reply_markup=teclado, parse_mode="HTML"
         )
         return
@@ -3099,15 +3096,15 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(chat_id=query.message.chat_id, text=msg, parse_mode="HTML")
 
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("😊 Fresco",   callback_data=f"fat:{sem}:{dia}:1"),
-             InlineKeyboardButton("🙂 Leve",     callback_data=f"fat:{sem}:{dia}:2")],
-            [InlineKeyboardButton("😐 Moderada", callback_data=f"fat:{sem}:{dia}:3"),
-             InlineKeyboardButton("😓 Alta",     callback_data=f"fat:{sem}:{dia}:4")],
-            [InlineKeyboardButton("💀 Al límite!", callback_data=f"fat:{sem}:{dia}:5")],
+            [InlineKeyboardButton("😊 Bien",       callback_data=f"fat:{sem}:{dia}:1"),
+             InlineKeyboardButton("🙂 Un poco",    callback_data=f"fat:{sem}:{dia}:2")],
+            [InlineKeyboardButton("😐 Bastante",   callback_data=f"fat:{sem}:{dia}:3"),
+             InlineKeyboardButton("😓 Muy cansado",callback_data=f"fat:{sem}:{dia}:4")],
+            [InlineKeyboardButton("💀 Agotado",    callback_data=f"fat:{sem}:{dia}:5")],
         ])
         await query.edit_message_text(
             "🏆 <b>¡Rutina completada!</b> 💪\n\n"
-            "<b>¿Cómo quedó tu cuerpo?</b>",
+            "<b>¿Qué tan cansado quedaste?</b>",
             reply_markup=kb, parse_mode="HTML"
         )
         return
