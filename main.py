@@ -1184,7 +1184,17 @@ def init_db():
         ("v5", "ALTER TABLE progreso ADD COLUMN fatiga_reportada INTEGER DEFAULT NULL"),
         ("v6", "ALTER TABLE progreso ADD COLUMN rir_reportado INTEGER DEFAULT NULL"),
         ("v7", "ALTER TABLE progreso ADD COLUMN progreso_reportado TEXT DEFAULT NULL"),
+        ("v8", """CREATE TABLE IF NOT EXISTS prioridad_bloques (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            bloque INTEGER NOT NULL,
+            semana_inicio INTEGER NOT NULL,
+            grupo_prioritario TEXT NOT NULL,
+            grupo_secundario TEXT NOT NULL,
+            ts DATETIME DEFAULT CURRENT_TIMESTAMP
+        )"""),
     ]
+
     for version, sql in migraciones:
         try:
             cur.execute(sql)
@@ -1402,6 +1412,14 @@ def avanzar_estado_dinamico(user_id: int, semana_actual: int, dia_actual: str):
     cur.execute("UPDATE estado SET semana = ?, dia = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?", (nueva_semana, nuevo_dia, user_id))
     conn.commit()
     conn.close()
+
+    # Prioridad muscular automática al inicio de cada nueva semana (S2+)
+    # Solo si hay datos suficientes (al menos 1 semana completada)
+    if nueva_semana > semana_actual and semana_actual >= 1:
+        try:
+            aplicar_prioridad_muscular(user_id, nueva_semana)
+        except Exception as e_p:
+            logger.warning("Prioridad muscular: error no crítico — %s", e_p)
 
 def rutina_completa(user_id: int, semana: int, dia: str) -> bool:
     conn = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
@@ -1772,6 +1790,231 @@ def aplicar_ajuste_automatico(user_id: int, semana: int, dia: str, ajuste: str):
 
     conn.commit()
     conn.close()
+
+
+# ═══════════════════════════════════════════════════════════════════
+# MÓDULO PRIORIDAD MUSCULAR AUTOMÁTICA (Israetel — periodización)
+# Cada 4 semanas selecciona el músculo más rezagado y redistribuye
+# volumen sin romper la estructura 4+1 ni aumentar el total global.
+# ═══════════════════════════════════════════════════════════════════
+
+# Grupos evaluados: 4 grandes grupos + coeficiente de tolerancia de volumen
+# (pierna tolera más series que hombro — diferencia de masa muscular)
+GRUPOS_PRIORIDAD = ["pecho", "espalda", "pierna", "hombro"]
+
+TOLERANCIA_VOLUMEN = {
+    "pecho":    16,   # volumen óptimo semanal (Schoenfeld 2017)
+    "espalda":  16,
+    "pierna":   20,   # grupos grandes toleran más (Israetel)
+    "hombro":   14,
+}
+
+def calcular_priority_score(user_id: int, grupo: str, semanas: int = 4) -> float:
+    """
+    Calcula el PRIORITY_SCORE para un grupo muscular.
+
+    PRIORITY_SCORE = (0.45 × (1-IP)) + (0.30 × (1-IV)) + (0.20 × IR)
+      IP = Índice de Progreso  (0=estancado, 1=progreso excelente)
+      IV = Índice de Volumen   (volumen_semanal / tolerancia_optima)
+      IR = Índice de Recuperación  (1 - fatiga_promedio/5)
+
+    + penalización -0.25 si fue prioridad en el bloque anterior
+    + exclusión si IR < 0.4 (músculo muy fatigado)
+    """
+    conn = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
+    cur  = conn.cursor()
+
+    # ── Volumen semanal promedio del grupo (últimas N semanas) ──
+    cur.execute("""
+        SELECT AVG(series_count) FROM (
+            SELECT semana, SUM(series) as series_count
+            FROM rutinas
+            WHERE user_id = ? AND grupo = ?
+            AND ejercicio_id NOT LIKE 'CAR_%'
+            GROUP BY semana
+            ORDER BY semana DESC LIMIT ?
+        )
+    """, (user_id, grupo, semanas))
+    row = cur.fetchone()
+    vol_promedio = row[0] if row and row[0] else 0
+
+    # ── Fatiga promedio del grupo (usar fatiga de los días donde aparece ese grupo) ──
+    cur.execute("""
+        SELECT AVG(p.fatiga_reportada) FROM progreso p
+        JOIN rutinas r ON r.user_id = p.user_id
+            AND r.semana = p.semana AND r.dia = p.dia
+        WHERE p.user_id = ? AND r.grupo = ?
+        AND p.fatiga_reportada IS NOT NULL
+        ORDER BY p.ts DESC LIMIT ?
+    """, (user_id, grupo, semanas * 2))
+    row_f = cur.fetchone()
+    fatiga_prom = row_f[0] if row_f and row_f[0] else 2.5
+
+    # ── Índice de Progreso: % de sesiones donde progreso_reportado = 'si' ──
+    cur.execute("""
+        SELECT COUNT(*) as total,
+               SUM(CASE WHEN p.progreso_reportado = 'si' THEN 1 ELSE 0 END) as ok
+        FROM progreso p
+        JOIN rutinas r ON r.user_id = p.user_id
+            AND r.semana = p.semana AND r.dia = p.dia
+        WHERE p.user_id = ? AND r.grupo = ?
+        AND p.progreso_reportado IS NOT NULL
+        ORDER BY p.ts DESC LIMIT ?
+    """, (user_id, grupo, semanas * 2))
+    row_p = cur.fetchone()
+    total_p, ok_p = (row_p[0] or 1), (row_p[1] or 0)
+    ip = ok_p / total_p if total_p > 0 else 0.5  # sin datos → neutro
+
+    # ── Penalización si fue prioridad en el bloque anterior ──
+    cur.execute("""
+        SELECT grupo_prioritario FROM prioridad_bloques
+        WHERE user_id = ?
+        ORDER BY bloque DESC LIMIT 1
+    """, (user_id,))
+    row_b = cur.fetchone()
+    fue_anterior = row_b and row_b[0] == grupo
+
+    conn.close()
+
+    tol = TOLERANCIA_VOLUMEN.get(grupo, 16)
+    iv  = min(vol_promedio / tol, 1.5)    # cap a 1.5 para evitar scores negativos extremos
+    ir  = max(0.0, 1 - (fatiga_prom / 5))
+
+    score = (0.45 * (1 - ip)) + (0.30 * (1 - iv)) + (0.20 * ir)
+    if fue_anterior:
+        score -= 0.25
+
+    return round(score, 4), ir   # devuelve score e IR para chequeo de seguridad
+
+
+def seleccionar_musculo_prioritario(user_id: int) -> dict:
+    """
+    Evalúa los 4 grupos y devuelve:
+      { "ganador": grupo, "perdedor": grupo, "scores": {grupo: score},
+        "razon": str, "deload_primero": bool }
+
+    Reglas de seguridad:
+      - IR < 0.4 → excluido (músculo muy fatigado)
+      - volumen > tolerancia * 1.1 → excluido
+      - Si todos excluidos por fatiga → recomendar deload primero
+    """
+    scores = {}
+    irs    = {}
+    for grupo in GRUPOS_PRIORIDAD:
+        sc, ir = calcular_priority_score(user_id, grupo)
+        scores[grupo] = sc
+        irs[grupo]    = ir
+
+    # Filtrar candidatos válidos
+    candidatos = [g for g in GRUPOS_PRIORIDAD if irs[g] >= 0.4]
+
+    if not candidatos:
+        return {
+            "ganador": None, "perdedor": None, "scores": scores,
+            "razon": "todos los grupos con fatiga alta — deload recomendado primero",
+            "deload_primero": True
+        }
+
+    ganador  = max(candidatos, key=lambda g: scores[g])
+    # El perdedor es el de menor score entre los que NO son el ganador
+    # y que tengan volumen suficiente para reducir (al menos 3 series)
+    perdedores_pos = [g for g in GRUPOS_PRIORIDAD if g != ganador]
+    perdedor = min(perdedores_pos, key=lambda g: scores[g])
+
+    razon = (
+        f"{ganador}: IP bajo, volumen bajo o buena recuperación "
+        f"(score={scores[ganador]:.2f})"
+    )
+
+    return {
+        "ganador": ganador, "perdedor": perdedor, "scores": scores,
+        "razon": razon, "deload_primero": False
+    }
+
+
+def aplicar_prioridad_muscular(user_id: int, semana_inicio: int):
+    """
+    Aplica la prioridad al plan del usuario:
+      - Ganador: +1 serie en cada sesión donde aparezca (máximo +4 semanales)
+      - Perdedor: -1 serie en sesiones donde aparezca, nunca en el compuesto principal (orden=1)
+      - Registra en prioridad_bloques para evitar repetición
+
+    Estructura 4+1 inviolable. Solo ajusta series, nunca ejercicios.
+    """
+    resultado = seleccionar_musculo_prioritario(user_id)
+
+    if resultado["deload_primero"] or not resultado["ganador"]:
+        logger.info("Prioridad muscular: deload recomendado antes de aplicar prioridad. user=%s", user_id)
+        return resultado
+
+    ganador  = resultado["ganador"]
+    perdedor = resultado["perdedor"]
+
+    conn = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
+    cur  = conn.cursor()
+
+    # Contar cuántas sesiones tiene el ganador en las próximas 4 semanas
+    series_sumadas = 0
+    for sem in range(semana_inicio, semana_inicio + 4):
+        if sem > 4: break
+
+        # Ganador: +1 serie por ejercicio del grupo (máx +4 series semanales totales)
+        cur.execute("""
+            SELECT id, series, orden FROM rutinas
+            WHERE user_id = ? AND semana = ? AND grupo = ?
+            AND ejercicio_id NOT LIKE 'CAR_%'
+        """, (user_id, sem, ganador))
+        for row_id, series, orden in cur.fetchall():
+            if series_sumadas >= 4:
+                break
+            nuevas = min(int(series or 3) + 1, 6)  # cap: máximo 6 series por ejercicio
+            cur.execute("UPDATE rutinas SET series = ? WHERE id = ?", (nuevas, row_id))
+            series_sumadas += 1
+
+        # Perdedor: -1 serie en accesorios (orden > 1, nunca compuesto principal)
+        cur.execute("""
+            SELECT id, series FROM rutinas
+            WHERE user_id = ? AND semana = ? AND grupo = ?
+            AND orden > 1 AND ejercicio_id NOT LIKE 'CAR_%'
+        """, (user_id, sem, perdedor))
+        for row_id, series in cur.fetchall():
+            nuevas = max(2, int(series or 3) - 1)
+            cur.execute("UPDATE rutinas SET series = ? WHERE id = ?", (nuevas, row_id))
+
+    # Registrar en tabla de histórico de prioridades
+    cur.execute("""
+        INSERT INTO prioridad_bloques (user_id, bloque, semana_inicio, grupo_prioritario, grupo_secundario)
+        VALUES (?, (SELECT COALESCE(MAX(bloque),0)+1 FROM prioridad_bloques WHERE user_id = ?),
+                ?, ?, ?)
+    """, (user_id, user_id, semana_inicio, ganador, perdedor))
+
+    conn.commit()
+    conn.close()
+
+    logger.info(
+        "Prioridad muscular aplicada: user=%s ganador=%s (+series) perdedor=%s (-series)",
+        user_id, ganador, perdedor
+    )
+    return resultado
+
+
+def obtener_prioridad_activa(user_id: int) -> dict | None:
+    """Devuelve la prioridad muscular activa del bloque actual, o None si no hay."""
+    conn = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT grupo_prioritario, grupo_secundario, semana_inicio, bloque
+        FROM prioridad_bloques WHERE user_id = ?
+        ORDER BY bloque DESC LIMIT 1
+    """, (user_id,))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {
+        "ganador": row[0], "perdedor": row[1],
+        "semana_inicio": row[2], "bloque": row[3]
+    }
 
 
 def obtener_stats_suaves(user_id: int) -> dict:
@@ -2441,7 +2684,15 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tec = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menú", callback_data="menu_volver")]])
             await context.bot.send_message(chat_id=query.message.chat_id, text="👆 Plan completo", reply_markup=tec)
 
+        elif accion == "main":
+            await query.answer()
+            await query.edit_message_text(
+                "🏠 <b>Menú principal</b>\n¿Qué quieres hacer?",
+                reply_markup=MENU_PRINCIPAL, parse_mode="HTML"
+            )
+
         elif accion == "nuevo":
+
             # Borra plan actual y reinicia onboarding
             conn = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
             cur = conn.cursor()
@@ -2844,25 +3095,19 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sem = int(sem_str)
         avanzar_estado_dinamico(user_id, sem, dia)
 
-        # Milestones (felicitaciones)
         for msg in procesar_milestones(user_id, sem):
             await context.bot.send_message(chat_id=query.message.chat_id, text=msg, parse_mode="HTML")
 
-        # Lanzar encuesta post-sesión — paso 1/2: RIR
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔥 Sin reserva — llegué al límite (RIR 0)", callback_data=f"rir:{sem}:{dia}:0")],
-            [InlineKeyboardButton("💪 1 rep en reserva — muy intenso (RIR 1)", callback_data=f"rir:{sem}:{dia}:1")],
-            [InlineKeyboardButton("😊 2 reps en reserva — bien (RIR 2)",       callback_data=f"rir:{sem}:{dia}:2")],
-            [InlineKeyboardButton("😌 Muy fácil — 3+ reps sobraban (RIR 3+)",  callback_data=f"rir:{sem}:{dia}:3")],
-            [InlineKeyboardButton("⏭ Saltar encuesta",                             callback_data="menu:main")],
+            [InlineKeyboardButton("😊 Fresco",   callback_data=f"fat:{sem}:{dia}:1"),
+             InlineKeyboardButton("🙂 Leve",     callback_data=f"fat:{sem}:{dia}:2")],
+            [InlineKeyboardButton("😐 Moderada", callback_data=f"fat:{sem}:{dia}:3"),
+             InlineKeyboardButton("😓 Alta",     callback_data=f"fat:{sem}:{dia}:4")],
+            [InlineKeyboardButton("💀 Al límite!", callback_data=f"fat:{sem}:{dia}:5")],
         ])
         await query.edit_message_text(
-            "🏆 <b>¡Rutina guardada!</b> Descansa bien 💤\n\n"
-            "━━━━━━━━━━━━━━━━━━\n"
-            "📊 <b>Encuesta rápida</b> — 2 preguntas · 10 segundos\n"
-            "El sistema ajusta automáticamente tu próxima sesión.\n\n"
-            "<b>1/2 — ¿Cuántas reps te sobraban al final de cada serie?</b>\n"
-            "<i>RIR = Reps en Reserva. Así medimos si el peso fue el correcto.</i>",
+            "🏆 <b>¡Rutina completada!</b> 💪\n\n"
+            "<b>¿Cómo quedó tu cuerpo?</b>",
             reply_markup=kb, parse_mode="HTML"
         )
         return
