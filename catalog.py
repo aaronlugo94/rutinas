@@ -1010,36 +1010,39 @@ ROTACION_ONDULATORIO: dict[int, dict[str, str]] = {
 }
 
 # ─── CALENTAMIENTOS POR GRUPO ─────────────────────────────────────────────────
-CALENTAMIENTO: dict[str, list[tuple[str, str, str]]] = {
+# Calentamientos prácticos: 5 min, específicos al movimiento del día.
+# Principio: activación específica > cardio genérico antes de fuerza.
+# Fuente: Behm & Chaouachi (2011) — el estiramiento estático PRE-fuerza reduce rendimiento.
+# Lo que sí funciona: activar el músculo que vas a trabajar con movimiento dinámico ligero.
+CALENTAMIENTO: dict[str, list[tuple[str, str]]] = {
     "gluteo": [
-        ("Clamshell con o sin banda",      "2×15 c/lado", "Activa glúteo medio, reduce dominancia cuádriceps"),
-        ("Puente glúteo sin peso",          "2×20",        "Pre-activa conexión mente-músculo, pausa 1s arriba"),
-        ("Rotación interna/externa cadera", "2×10 c/lado", "Lubrica coxofemoral, mejora rango de movimiento"),
+        ("Caminata 3-5 min en cinta al 50% o en sitio",    "Eleva temperatura muscular sin fatiga"),
+        ("Puente de glúteo sin peso — 2×15 con pausa 2s",  "Activa la conexión mente-músculo antes de cargar"),
+        ("Hip thrust con barra vacía — 1×12",               "Practica el patrón con peso mínimo antes del trabajo real"),
     ],
     "pierna": [
-        ("Sentadilla goblet con peso leve", "2×12",        "Activa cadena posterior, espalda neutra"),
-        ("Bisagra de cadera sin peso",      "2×12",        "Patrón motor bisagra, activa isquios y glúteo"),
-        ("Movilidad tobillo rotación",      "2×10 c/lado", "Tobillo limita profundidad de sentadilla"),
+        ("Caminata 3-5 min o bicicleta suave",              "Lubrica rodillas y caderas antes de cargar"),
+        ("Sentadilla sin peso — 2×10 lentas",               "Activa el patrón motor, revisa rango de movimiento"),
+        ("Peso muerto con barra vacía — 1×10",              "Calienta isquios y glúteo con el movimiento exacto"),
     ],
     "empuje": [
-        ("Apertura de pecho con banda",    "2×15",        "Moviliza glenohumeral, previene impingement"),
-        ("Rotación externa hombro banda",  "2×12 c/lado", "Activa manguito rotador, protege bajo carga"),
-        ("Flexiones lentas en rodillas",   "2×8",         "Patrón motor del press, escápulas retraídas"),
+        ("Círculos de hombro hacia adelante y atrás — 2×10", "Lubrica la articulación glenohumeral"),
+        ("Flexiones lentas sin peso — 2×8",                  "Activa el patrón del press, escápulas retraídas"),
+        ("Press con barra vacía o mancuernas ligeras — 1×12","Practica el movimiento antes de la carga real"),
     ],
     "tiron": [
-        ("Retracción escapular",           "2×15",        "Activa romboides y trapecio medio"),
-        ("Rotación torácica en suelo",     "2×10 c/lado", "Movilidad torácica sin compensar lumbar"),
-        ("Jalón con banda desde arriba",   "2×12",        "Pre-activa dorsal, codos hacia bolsillos"),
+        ("Círculos de hombro y retracción escapular — 2×15", "Activa romboides y trapecio medio"),
+        ("Jalón con banda o peso mínimo — 2×10",             "Pre-activa el dorsal con el patrón exacto"),
+        ("Remo ligero — 1×12",                               "Calienta con el movimiento real, no uno diferente"),
     ],
     "core": [
-        ("Respiración diafragmática",      "2×5 resp",    "Presión intraabdominal, McGill 2010"),
-        ("Dead bug lento",                 "2×8 c/lado",  "Transverso abdominal, estabilizador profundo"),
-        ("Bird dog",                       "2×10 c/lado", "Coordinación lumbo-pélvica"),
+        ("Caminata ligera 3 min",                            "Eleva temperatura antes del trabajo de core"),
+        ("Dead bug lento — 2×8 c/lado",                     "Activa el transverso abdominal profundo"),
+        ("Plancha 2×20s",                                    "Establece tensión de core antes de los ejercicios"),
     ],
     "cardio": [
-        ("Marcha elevando rodillas",       "2×30s",       "Eleva FC progresivamente de forma segura"),
-        ("Círculos de cadera amplios",     "2×10 c/dir",  "Lubrica cadera antes del cardio"),
-        ("Rotaciones de tronco de pie",    "1×20",        "Moviliza columna torácica"),
+        ("Primeros 3-5 min al 50% de la intensidad objetivo","El cardio se calienta a sí mismo — empieza suave"),
+        ("Movilidad de cadera — 10 círculos c/dirección",    "Opcional si tienes caderas rígidas al despertar"),
     ],
 }
 
