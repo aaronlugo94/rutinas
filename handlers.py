@@ -729,3 +729,4 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(callback_router))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handler_texto))
+    
