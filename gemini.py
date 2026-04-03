@@ -83,8 +83,8 @@ def _split_desc(objetivo: str, dias: int, genero: str) -> tuple[list[str], list[
     dias_nombres = DIAS_POR_N.get(dias, DIAS_POR_N[3])
     es_gluteo    = "gluteo" in objetivo or "nalg" in objetivo.lower()
 
-    if es_gluteo and genero == "mujer":
-        # Split glúteo especializado (Contreras 2015 — frecuencia 3x/semana)
+    if es_gluteo:
+        # Split glúteo especializado — frecuencia 3x (Contreras 2015)
         splits = {
             3: ["gluteo", "tiron",  "gluteo"],
             4: ["gluteo", "empuje", "gluteo", "tiron"],
@@ -183,18 +183,24 @@ def build_prompt(perfil: dict, num_semana: int, ambiente: str = "gym") -> str:
         obj_protocolo = """PROTOCOLO TONIFICACIÓN — Schoenfeld 2017:
   Balance empuje:tirón 1:1.5. Core estabilidad > flexión (McGill 2010)."""
 
-    # Protocolo género
-    genero_protocolo = (
-        """MUJER — Nippard / Contreras:
-  Prioridad absoluta: glúteo + pierna tonificada.
-  Upper body: tonificación sin volumen excesivo.
-  Volumen glúteo: 12-20 series/semana (Contreras 2015).
-  Cardio: zona 2 SIEMPRE — preserva músculo mientras quema grasa."""
-        if genero == "mujer" else
-        """HOMBRE — Schoenfeld / Nippard:
-  Pecho, espalda, hombros, brazos. Más press y remo.
-  Lower: sentadilla pesada + peso muerto. Sin exceso de aislamiento glúteo."""
-    )
+    # Protocolo objetivo (neutral, mismo para cualquier género)
+    genero_protocolo = {
+        "gluteo": (
+            "GLÚTEO — Contreras (2015) / Nippard (2023):\n"
+            "  Volumen: 12-20 series/semana de glúteo.\n"
+            "  Cardio: zona 2 al final — preserva músculo. NUNCA HIIT post-fuerza."
+        ),
+        "peso": (
+            "PÉRDIDA DE GRASA — ACSM 2021:\n"
+            "  Compuestos multiarticulares primero (mayor EPOC).\n"
+            "  Cardio zona 2: 20-30 min al final. FC 120-135 bpm."
+        ),
+        "general": (
+            "FUERZA Y ESTÉTICA — Schoenfeld 2017:\n"
+            "  Frecuencia 2x por músculo por semana.\n"
+            "  Balance empuje:tirón 1:1.5."
+        ),
+    }.get(obj, "")
 
     # Limitaciones
     lim_protocolo = {
