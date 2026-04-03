@@ -92,34 +92,28 @@ def rutina_html(user_id: int, semana: int, dia: str) -> tuple[str, InlineKeyboar
     }
 
     # HEADER
-    msg = (
-        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"{icon} <b>S{semana} · {dia.capitalize()}</b>  ·  {amb_tag}  ·  ~{dur} min\n"
-    )
+    tipo_str = ""
     if ses_info:
         tkey = _tipo_key(ses_info)
-        msg += (
-            f"   {tipo_icons.get(tkey, '💪')}  ·  "
-            f"{ses_info['reps']} reps  ·  RIR {ses_info.get('rir', 2)}\n"
-        )
-    msg += (
-        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"⚡ {nivel}  ·  🔥 {p.barra_racha(racha)}\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        tipo_labels = {"fuerza": "Fuerza", "hipertrofia": "Hipertrofia", "metabolico": "Metabólico"}
+        tipo_str = f"  {tipo_labels.get(tkey, '')} · {ses_info['reps']} reps · RIR {ses_info.get('rir', 2)}\n"
+
+    msg = (
+        f"<b>S{semana} · {dia.capitalize()}</b>  {amb_tag}  ~{dur} min\n"
+        f"{tipo_str}"
+        f"Racha {p.barra_racha(racha)} · {nivel}\n\n"
     )
 
     # CALENTAMIENTO
     cal_items = cat.CALENTAMIENTO.get(grupo_dia, cat.CALENTAMIENTO.get("cardio", []))
     if cal_items:
-        msg += "🌡 <b>CALENTAMIENTO</b> <i>(8-10 min)</i>\n"
+        msg += "<b>Calentamiento</b> (8-10 min)\n"
         for nc, sc, nota in cal_items:
-            msg += f"   ▸ {nc} — <b>{sc}</b>\n"
-            msg += f"     <i>{nota}</i>\n"
+            msg += f"  {nc} — {sc}\n"
         msg += "\n"
 
     # EJERCICIOS
-    msg += "💪 <b>TRABAJO PRINCIPAL</b>\n"
-    msg += "──────────────────────────\n"
+    msg += "<b>Ejercicios</b>\n"
 
     keyboard  = []
     hechos    = 0
@@ -135,17 +129,11 @@ def rutina_html(user_id: int, semana: int, dia: str) -> tuple[str, InlineKeyboar
         check = "✅" if hecho else "⬜"
         nex   = safe(ex["ejercicio"])
 
-        msg += f"\n{check} <b>{idx}. {nex}</b>"
-        if ej and not es_cardio:
-            msg += f" <i>EMG:{ej.emg_score}⚡</i>"
-        msg += "\n"
+        msg += f"\n{check} <b>{idx}. {nex}</b>\n"
 
         if es_cardio:
             t = ex["reps"] if "min" in str(ex["reps"]) else "20min"
-            msg += (
-                f"   ⏱ <b>{t}</b>  ·  Zona 2  ·  120-135 bpm\n"
-                f"   <i>Hablar cómodo = zona 2 confirmada ✅</i>\n"
-            )
+            msg += f"   {t} · Zona 2 (120-135 bpm)\n"
         else:
             msg += f"   📌 <b>{ex['series']} × {safe(ex['reps'])} reps</b>\n"
             if ex.get("notas"):
@@ -168,15 +156,13 @@ def rutina_html(user_id: int, semana: int, dia: str) -> tuple[str, InlineKeyboar
             ])
 
     # BARRA DE PROGRESO SESIÓN
-    msg += f"\n──────────────────────────\n"
-    msg += f"📊 {p.barra_progreso(hechos, len(ejercicios))}\n"
+    msg += f"\n{p.barra_progreso(hechos, len(ejercicios))}\n"
 
     # NUTRICIÓN
     obj_key = "gluteo" if grupo_dia == "gluteo" else ("peso" if "peso" in grupo_dia else "general")
     nutr    = cat.NUTRICION.get(obj_key, cat.NUTRICION["general"])
     msg += (
-        f"\n──────────────────────────\n"
-        f"🥗 <b>NUTRICIÓN</b>\n"
+        f"\n<b>Hoy</b>\n"
         f"  {nutr['pre']}\n"
         f"  {nutr['post']}\n"
     )
@@ -229,22 +215,17 @@ def msg_fin_sesion(resultado: dict) -> str:
     badges_nuevos = resultado["badges_nuevos"]
     es_record     = resultado["es_record"]
 
-    msg  = celeb + "\n\n"
-    msg += "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-    msg += f"🔥 {p.barra_racha(racha)}"
+    msg = celeb + "\n\n"
+    msg += f"Racha: {p.barra_racha(racha)}"
     if es_record:
-        msg += "  🆕 <b>¡RÉCORD PERSONAL!</b>"
-    msg += f"\n⚡ +<b>{xp_ganado} XP</b>  ·  {nivel}\n"
-    msg += f"   {barra_xp}\n"
+        msg += " — nuevo récord"
+    msg += f"\n+{xp_ganado} XP · {nivel}\n{barra_xp}\n"
 
     if badges_nuevos:
-        msg += "\n🏅 <b>¡BADGE DESBLOQUEADO!</b>\n"
-        for key in badges_nuevos:
-            if key in p.BADGES:
-                msg += p.badge_html(key) + "\n"
+        msg += "\n" + "  ".join(p.badge_html(k) for k in badges_nuevos if k in p.BADGES) + "\n"
 
     if resultado.get("semana_perfecta"):
-        msg += "\n💯 <b>¡SEMANA PERFECTA!</b> +150 XP bonus 🔥\n"
+        msg += "\nSemana completa. +150 XP\n"
 
     return msg
 
@@ -279,7 +260,7 @@ def plan_html_paginas(user_id: int) -> list[str]:
         txt = (
             f"📅 <b>SEMANA {sem_num}/4</b>{marker}\n"
             f"   {p.barra_progreso(hechos_sem, total_sem, ancho=8)}\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            "\n"
         )
         for dia_nombre, ejercs in dias_sem.items():
             if not ejercs:
