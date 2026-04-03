@@ -1,451 +1,375 @@
 """
-personality.py — El alma del bot.
+personality.py — Voz del coach.
 
-Voz: mexicano con chispa, sin groserías, personalidad real.
-Sistema: mensajes adaptativos por género, racha, fatiga, progresión y objetivo.
+Tono: coach profesional mexicano. Directo, específico, sin drama.
+Reglas:
+  - Nunca frases de póster motivacional ("tú puedes", "sigue adelante")
+  - Siempre concreto — si hay un dato, úsalo
+  - Máximo 1 emoji por mensaje, a veces ninguno
+  - Habla como si conocieras a la persona, no como anuncio
+  - El humor viene de la honestidad, no de exclamaciones
 """
 from __future__ import annotations
 import random
-from dataclasses import dataclass
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ONBOARDING — primera impresión
+# ONBOARDING
 # ══════════════════════════════════════════════════════════════════════════════
 
-BIENVENIDA = """🏆 <b>GymCoach — Tu entrenador personal con ciencia real</b>
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BIENVENIDA = """<b>GymCoach</b>
 
-¿Sabes cuántos planes de gym se abandonan en la primera semana?
-<b>El 92%.</b>
+Rutinas basadas en ciencia, no en YouTube.
 
-Los que sobreviven tienen algo en común: un plan que <i>realmente funciona</i>, progresión visible, y alguien que los entiende.
+El plan se genera según tu objetivo, nivel y dónde entrenas. Se ajusta cada semana según cómo te fue la anterior — si progresaste, sube; si estás agotada, baja.
 
-Eso soy yo. 🤝
-
-✔ Rutinas basadas en EMG real (no YouTube, no broscience)
-✔ Me adapto a ti cada semana según cómo te fue
-✔ Modo gym y modo casa — sin pretextos
-✔ Cardio que quema grasa sin destruir músculo
-
-<i>5 preguntas · tu plan listo en 60 segundos</i>
-
-<b>¿Empezamos?</b> 👇"""
+Cinco preguntas y listo."""
 
 
 def bienvenida_objetivo(objetivo: str, genero: str) -> str:
     configs = {
         ("gluteo", "mujer"): (
-            "🍑", "Glúteo y pierna prioritarios",
-            "Vamos por ese glúteo que hace voltear. Periodización ondulatoria, "
-            "orden por activación EMG, cardio zona 2 que quema grasa sin tocar músculo.",
-            "Contreras (2015) prueba que el hip thrust activa el glúteo al 200% del máximo voluntario. "
-            "Eso es lo que vas a hacer."
+            "Objetivo: glúteo.\n\n"
+            "El plan usa periodización ondulatoria — tres tipos de sesión que rotan cada semana "
+            "(fuerza, hipertrofia, metabólico). Contreras (2015) demostró que esa variación "
+            "produce más crecimiento que hacer siempre el mismo rango de reps.\n\n"
+            "El hip thrust va primero en cada sesión de glúteo. Siempre."
         ),
         ("gluteo", "hombre"): (
-            "💪", "Glúteo y pierna potentes",
-            "Pierna fuerte es atleta fuerte. Sentadilla, RDL, prensa alta — lo que da resultados de verdad.",
-            "El glúteo es el músculo más grande del cuerpo. Entrenarlo bien mejora TODO lo demás."
+            "Objetivo: pierna y glúteo.\n\n"
+            "Sentadilla, peso muerto rumano, prensa alta. Los compuestos primero, "
+            "aislamiento al final cuando el músculo ya está agotado."
         ),
         ("peso", "mujer"): (
-            "🔥", "Pérdida de grasa con músculo",
-            "Déficit calórico + músculo preservado = cuerpo que envídian. No dieta de hambre, entrenamiento inteligente.",
-            "Schoenfeld (2017): más músculo = mayor metabolismo basal 24/7. Así se quema grasa de verdad."
+            "Objetivo: pérdida de grasa.\n\n"
+            "El plan combina fuerza y cardio zona 2. La zona 2 quema grasa sin destruir músculo "
+            "— al contrario del HIIT post-entrenamiento, que eleva cortisol y cataboliza."
         ),
         ("peso", "hombre"): (
-            "🔥", "Recomposición corporal",
-            "Quemar grasa mientras mantienes (o ganas) músculo. El santo grial. Es posible con el plan correcto.",
-            "Déficit moderado + proteína alta + entrenamiento de fuerza = la fórmula real."
+            "Objetivo: recomposición corporal.\n\n"
+            "Déficit calórico moderado con entrenamiento de fuerza. "
+            "El músculo que mantengas mientras bajas de peso define el resultado final."
         ),
         ("general", "mujer"): (
-            "⚡", "Cuerpo tonificado y fuerte",
-            "Fuerza funcional, tono muscular, energía todo el día. Nada de rutinas de 'musculitos'.",
-            "Las mujeres que levantan pesado no se ponen grandes — se ponen fuertes y definidas."
+            "Objetivo: cuerpo completo.\n\n"
+            "Énfasis en pierna y glúteo con trabajo de upper body para equilibrio. "
+            "Frecuencia 2x por grupo muscular por semana."
         ),
         ("general", "hombre"): (
-            "⚡", "Fuerza y estética completa",
-            "Pecho, espalda, hombros, brazos, piernas. Un físico completo y equilibrado.",
-            "Frecuencia 2× por músculo (Schoenfeld 2016) = el doble de resultados en el mismo tiempo."
+            "Objetivo: fuerza y estética.\n\n"
+            "Pecho, espalda, hombros, brazos, piernas. "
+            "Split diseñado para frecuencia 2x por músculo — más efectivo que el clásico bro split."
         ),
     }
-    key    = (objetivo, genero)
-    emoji, titulo, desc, ciencia = configs.get(key, configs[("general", "hombre")])
-    return (
-        f"{emoji} <b>{titulo}</b>\n\n"
-        f"{desc}\n\n"
-        f"<i>🔬 {ciencia}</i>"
-    )
+    key = (objetivo, genero)
+    return configs.get(key, configs[("general", "hombre")])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MENSAJES DE INICIO DE SESIÓN
-# Personalizados por racha, hora, historial reciente
+# SALUDOS DE INICIO DE SESIÓN
 # ══════════════════════════════════════════════════════════════════════════════
 
-def saludo_inicio(nombre: str, racha: int, genero: str, grupo_hoy: str,
-                  rutinas_totales: int) -> str:
-    nombre_s = nombre.split()[0] if nombre else ""
+def saludo_inicio(nombre: str, racha: int, genero: str,
+                  grupo_hoy: str, rutinas_totales: int) -> str:
+    n = nombre.split()[0] if nombre else ""
 
-    # Primera vez
     if rutinas_totales == 0:
-        msgs = [
-            f"{'¡Hola' if not nombre_s else f'¡Hola, {nombre_s}'}! Hoy empieza todo. "
-            "El día 1 siempre es el más importante — es el que decide si habrá un día 2. 💚",
-            f"Primera sesión. Esto es lo único que importa hoy: terminarla. "
-            "No importa el peso, no importa si fue perfecta. Solo terminarla. 🌱",
-        ]
-        return random.choice(msgs)
+        return f"Primera sesión{', ' + n if n else ''}. Empieza con técnica, no con peso."
 
-    # Racha alta
-    if racha >= 30:
-        return (
-            f"{'🏅 ' + nombre_s + ' — ' if nombre_s else '🏅 '}30+ días de racha. "
-            "Eso no es motivación, eso es identidad. Ya eres alguien que entrena. 🔥"
-        )
-    if racha >= 14:
-        return (
-            f"{'💎 ' + nombre_s + ' — ' if nombre_s else '💎 '}{racha} días seguidos. "
-            "2 semanas de consistencia. La mayoría ya abandonó. Tú no. 💪"
-        )
-    if racha >= 7:
-        return (
-            f"{'⚡ ' + nombre_s if nombre_s else '⚡'} — Semana completa de racha. "
-            "Así se construyen los hábitos reales. ¿Vamos por la segunda? 🎯"
-        )
-    if racha >= 3:
-        return (
-            f"{'🌟 ' + nombre_s if nombre_s else '🌟'} — {racha} días seguidos. "
-            "El momentum está contigo. No lo rompas hoy. 💚"
-        )
-
-    # Mensajes por grupo del día
     grupo_msgs = {
         "gluteo": [
-            f"{'¡' + nombre_s + ', a' if nombre_s else 'A'} trabajar ese glúteo! 🍑 "
-            "Hip thrust primero — es el rey del glúteo con razón.",
-            "Día de glúteo. El ejercicio que más va a cambiar tu físico. Hazlo con intención. 🎯",
-            f"{'¡Hoy toca glúteo' + (', ' + nombre_s) + '!' if nombre_s else '¡Hoy toca glúteo!'} "
-            "Recuerda: pausa 1 segundo arriba en cada hip thrust. Eso es lo que hace la diferencia. 🍑",
+            "Hip thrust primero. Pausa 1 segundo arriba.",
+            "Día de glúteo. Orden por activación — los compuestos antes que el aislamiento.",
+            "Glúteo hoy. Si el peso se siente ligero, no lo es — reduce el RIR.",
         ],
         "pierna": [
-            "Día de pierna. El más difícil. El que más vale. 🦵",
-            f"{'¡Piernas, ' + nombre_s + '!' if nombre_s else '¡Día de piernas!'} "
-            "El músculo más grande = el que más grasa quema. Vale la pena el dolor.",
-            "Nadie que entrena piernas bien se arrepiente. Nadie que la salta tampoco — pero se nota. 🦵",
+            "Pierna hoy. Calienta bien las rodillas antes de cargar.",
+            "Sentadilla o prensa primero, mientras tienes energía para la técnica.",
+            "Día de pierna. El más exigente del plan — vale la pena hacerlo bien.",
         ],
         "empuje": [
-            f"{'¡' + nombre_s + ', h' if nombre_s else 'H'}oy empuje! Pecho, hombros y tríceps. "
-            "Codos a 45° — no los abras, te lo juro que es la diferencia. 💪",
-            "Día de empuje. Escápulas fijas, excéntrico lento. Así es como se construye músculo real. 💪",
+            "Empuje hoy. Escápulas fijas durante todo el press.",
+            "Pecho y hombros. Codos a 45° del cuerpo en el press — no perpendiculares.",
+            "Empuje. Si el hombro molesta, avísame y ajusto.",
         ],
         "tiron": [
-            f"{'¡' + nombre_s + ', t' if nombre_s else 'T'}irón hoy! Espalda y bíceps. "
-            "Piensa en jalar con los codos, no con las manos. Cambia todo. 🏋️",
-            "Día de tirón. La espalda es lo primero que la gente nota — aunque no te digan nada. 🏋️",
+            "Tirón hoy. Piensa en jalar con los codos, no con las manos.",
+            "Espalda y bíceps. Retracción escapular al final de cada rep.",
+            "Día de tirón. El dorsal es el músculo que más cambia la silueta.",
+        ],
+        "core": [
+            "Core hoy. Calidad sobre cantidad — 10 reps perfectas valen más que 30 rápidas.",
+            "Core. La plancha que duele en el primer segundo no está bien hecha.",
+        ],
+        "cardio": [
+            "Cardio hoy. Zona 2 significa que puedes hablar con normalidad.",
+            "Si tienes que respirar por la boca para mantener el ritmo, baja la intensidad.",
         ],
     }
-    msgs_grupo = grupo_msgs.get(grupo_hoy, [
-        f"{'¡Vamos, ' + nombre_s + '!' if nombre_s else '¡Vamos!'} Hoy es día de sudar. 💪",
-        "Otro día, otra oportunidad de superar a quien eras ayer. 🎯",
-    ])
-    return random.choice(msgs_grupo)
+
+    racha_msgs = {
+        range(3, 7):   f"{racha} días seguidos.",
+        range(7, 14):  f"Semana completa de racha.",
+        range(14, 30): f"{racha} días. Ya es hábito.",
+        range(30, 999):f"{racha} días de racha.",
+    }
+
+    racha_str = ""
+    for r, msg in racha_msgs.items():
+        if racha in r:
+            racha_str = f" {msg}"
+            break
+
+    base = random.choice(grupo_msgs.get(grupo_hoy, ["A trabajar."]))
+    return f"{base}{racha_str}"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CELEBRACIONES AL TERMINAR RUTINA
-# El momento más importante para retención
+# CELEBRACIONES AL TERMINAR
 # ══════════════════════════════════════════════════════════════════════════════
 
-def celebracion_rutina(
-    rutinas_totales: int,
-    racha: int,
-    grupo: str,
-    progreso: str,
-    genero: str,
-    nombre: str = "",
-) -> str:
-    nombre_s = nombre.split()[0] if nombre else ""
+def celebracion_rutina(rutinas_totales: int, racha: int, grupo: str,
+                       progreso: str, genero: str, nombre: str = "") -> str:
 
-    # Milestones numéricos especiales
-    if rutinas_totales == 1:
-        return (
-            "🌱 <b>¡PRIMERA RUTINA TERMINADA!</b>\n\n"
-            "Este momento importa más de lo que crees.\n"
-            "La mayoría nunca llega aquí.\n\n"
-            "Tú sí llegaste. 💚\n\n"
-            "<i>Mañana va a doler. Eso es el músculo creciendo. Es buena señal.</i>"
-        )
-    if rutinas_totales == 5:
-        return (
-            "🔥 <b>¡5 RUTINAS!</b>\n\n"
-            "Una semana completa de trabajo real.\n"
-            "Tu cuerpo ya está cambiando — aunque el espejo todavía no lo muestre.\n\n"
-            "Los cambios internos (fuerza, metabolismo, densidad ósea) van primero. "
-            "El espejo viene después. Confía en el proceso. 💪"
-        )
-    if rutinas_totales == 10:
-        return (
-            "💎 <b>¡10 RUTINAS COMPLETADAS!</b>\n\n"
-            "Dos semanas de consistencia. Eso pone en el top 20% de la gente "
-            "que alguna vez pagó un gym. En serio.\n\n"
-            "Ya no eres 'alguien que quiere entrenar'.\n"
-            "<b>Eres alguien que entrena.</b> 🏆"
-        )
-    if rutinas_totales == 25:
-        return (
-            "🏅 <b>¡25 RUTINAS!</b>\n\n"
-            "Un mes de trabajo. Esto ya es un hábito real, no motivación.\n\n"
-            "La motivación sube y baja. Los hábitos se quedan.\n"
-            "Tú ya cruzaste esa línea. 🌟\n\n"
-            "<i>¿Ya notas la diferencia en cómo te ves? ¿Cómo te mueves? "
-            "¿Cómo duermes? Eso es real. Eso lo hiciste tú.</i>"
-        )
-    if rutinas_totales == 50:
-        return (
-            "👑 <b>¡50 RUTINAS!</b>\n\n"
-            "Cincuenta veces elegiste entrenar sobre no hacerlo.\n"
-            "Cincuenta veces ganaste.\n\n"
-            "Eso no es suerte. Eso no es talento.\n"
-            "<b>Eso es carácter.</b> 🏆💪🔥"
-        )
-    if rutinas_totales == 100:
-        return (
-            "🌟👑🏆 <b>¡100 RUTINAS!</b> 👑🌟🏆\n\n"
-            "Cien. Uno-cero-cero.\n\n"
-            "Eres oficialmente alguien diferente a quien empezó esto.\n"
-            "Literalmente — tu cuerpo tiene más músculo, tu cerebro tiene "
-            "nuevas conexiones neuronales, tu identidad cambió.\n\n"
-            "Eso no lo hace casi nadie. Tú sí lo hiciste. 🔥"
-        )
+    # Milestones específicos — solo cuando hay algo real que decir
+    milestones = {
+        1:   "Listo. Primera sesión registrada.\nMañana va a doler un poco — es normal. Significa que el músculo respondió.",
+        10:  f"10 sesiones completadas.\nYa tienes datos suficientes para ver patrones — revisa tu volumen semanal.",
+        25:  f"25 sesiones. Un mes de trabajo real.\nEn este punto el plan ya sabe cómo responde tu cuerpo.",
+        50:  f"50 sesiones.\nPocos llegan aquí. La mayoría abandona antes del primer mes.",
+        100: f"100 sesiones registradas.\nEso es más de lo que la mayoría hace en toda su vida de gym.",
+    }
 
-    # Celebraciones de racha
-    if racha % 7 == 0 and racha > 0:
-        semanas = racha // 7
-        return (
-            f"🎯 <b>¡{racha} DÍAS DE RACHA!</b> ({semanas} {'semana' if semanas == 1 else 'semanas'})\n\n"
-            f"{'¡' + nombre_s + ', e' if nombre_s else 'E'}so es consistencia de élite.\n"
-            "La mayoría rompe la racha en el día 3. Tú llevas {racha}. 💚\n\n"
-            "<i>No rompas el eslabón mañana.</i> 🔗"
-        )
+    if rutinas_totales in milestones:
+        return milestones[rutinas_totales]
 
-    # Celebraciones por progreso
+    # Progresión — el dato concreto importa más que el aplauso
     if progreso == "si":
-        msgs_progreso = {
+        progreso_msgs = {
             "gluteo": [
-                "📈 <b>¡PROGRESASTE HOY!</b> 🍑\n\n"
-                "Más peso en el hip thrust = más glúteo. Simple. Brutal. Efectivo.\n\n"
-                "Cada kilo que subes es músculo nuevo que tu cuerpo está construyendo. "
-                "Así funciona. 💚",
-                "📈 <b>¡PROGRESIÓN CONFIRMADA!</b>\n\n"
-                "El glúteo responde diferente al peso que a las reps.\n"
-                "Hoy subiste la carga — eso es exactamente lo que prescribe Contreras. 🔬",
+                "Progresaste en glúteo. Ese es el único indicador que importa semana a semana.",
+                "Más peso o más reps en glúteo. El estímulo mecánico aumentó — eso es crecimiento.",
             ],
             "pierna": [
-                "📈 <b>¡PROGRESASTE HOY!</b> 🦵\n\n"
-                "Pierna más fuerte = cuerpo más fuerte. No hay atajos.\n"
-                "Lo que hiciste hoy va a recompensar en todo lo demás. 💪",
+                "Progresaste en pierna. La sentadilla o la prensa más cargada es fuerza real.",
+                "Más carga en pierna esta semana. El músculo más grande del cuerpo está respondiendo.",
             ],
         }
-        msgs = msgs_progreso.get(grupo, [
-            "📈 <b>¡PROGRESASTE HOY!</b>\n\n"
-            f"{'¡' + nombre_s + ', s' if nombre_s else 'S'}ubiste peso o reps. "
-            "Eso se llama progresión de carga — la base de todo cambio físico real.\n\n"
-            "El músculo solo crece cuando le das un motivo. Hoy se lo diste. 💪",
-            "📈 <b>¡MÁS FUERTE QUE LA SEMANA PASADA!</b>\n\n"
-            "La progresión compuesta es magia. Sube 1kg por semana = "
-            "+52kg al año. Eso es lo que está pasando. 🚀",
+        msgs = progreso_msgs.get(grupo, [
+            "Progresaste. El peso o las reps subieron — eso es el objetivo.",
+            "Más carga esta semana. La progresión compuesta funciona así.",
         ])
         return random.choice(msgs)
 
-    # Celebración genérica (pero con personalidad)
-    msgs_genericas = [
-        f"✅ {'¡' + nombre_s + ', r' if nombre_s else 'R'}utina completada!\n\n"
-        "Mientras tú entrenabas, alguien más estaba pensando en empezar mañana.\n"
-        "Tú ya ganaste el día. 💚",
+    # Racha notable
+    if racha in (7, 14, 21, 30):
+        return f"{racha} días seguidos. El plan está funcionando."
 
-        f"✅ {'¡Bien hecho, ' + nombre_s + '!' if nombre_s else '¡Rutina completada!'}\n\n"
-        "El cuerpo que quieres se construye con días como hoy — "
-        "los que no tienes ganas pero lo haces de todos modos. 🎯",
-
-        f"✅ <b>¡Listo!</b>\n\n"
-        "Otra sesión en el banco. Otro ladrillo en el edificio.\n"
-        "No se ve todavía — pero está ahí. Confía en el proceso. 🏗",
-
-        "✅ <b>¡Sesión completada!</b> 💪\n\n"
-        "Dato: tu cuerpo sigue quemando calorías extra las próximas 24-48h "
-        "después de entrenar fuerza. Se llama EPOC.\n"
-        "Literalmente ganas durmiendo hoy. 🔥",
+    # Default — simple y directo
+    defaults = [
+        "Sesión registrada.",
+        "Listo. Descansa bien hoy — el músculo crece en recuperación, no en el gym.",
+        "Hecho. La proteína post-entreno en los próximos 45 minutos.",
+        "Completado. El EPOC va a mantener el metabolismo elevado las próximas horas.",
     ]
-    return random.choice(msgs_genericas)
+    return random.choice(defaults)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# RESUMEN SEMANAL — el momento WOW
+# RESUMEN SEMANAL
 # ══════════════════════════════════════════════════════════════════════════════
 
-def resumen_semanal(
-    semana: int,
-    rutinas_completadas: int,
-    rutinas_programadas: int,
-    racha: int,
-    progresiones: int,
-    grupo_principal: str,
-    genero: str,
-    nombre: str = "",
-    fatiga_promedio: float = 2.5,
-) -> str:
-    nombre_s   = nombre.split()[0] if nombre else ""
-    pct        = round(rutinas_completadas / max(rutinas_programadas, 1) * 100)
-    estrella   = "⭐" * min(5, max(1, rutinas_completadas))
+def resumen_semanal(semana: int, rutinas_completadas: int, rutinas_programadas: int,
+                    racha: int, progresiones: int, grupo_principal: str,
+                    genero: str, nombre: str = "", fatiga_promedio: float = 2.5) -> str:
 
-    # Rating de la semana
+    n   = nombre.split()[0] if nombre else ""
+    pct = round(rutinas_completadas / max(rutinas_programadas, 1) * 100)
+
+    # Evaluación honesta sin drama
     if pct == 100:
-        rating = "💯 SEMANA PERFECTA"
-        rating_msg = "Completaste TODO. Eso no es normal — eso es excepcional."
+        eval_str = f"Semana {semana} completa — {rutinas_completadas}/{rutinas_programadas} sesiones."
     elif pct >= 75:
-        rating = "🔥 SEMANA SÓLIDA"
-        rating_msg = f"3 de 4 rutinas. El músculo creció. La semana valió."
+        eval_str = f"Semana {semana} — {rutinas_completadas}/{rutinas_programadas} sesiones."
     elif pct >= 50:
-        rating = "📊 SEMANA REGULAR"
-        rating_msg = "La mitad. Funciona. Pero sabes que puedes más."
+        eval_str = (
+            f"Semana {semana} — {rutinas_completadas}/{rutinas_programadas} sesiones. "
+            f"La mitad. Funciona, pero el plan está diseñado para {rutinas_programadas}."
+        )
     else:
-        rating = "⚠️ SEMANA DIFÍCIL"
-        rating_msg = "Pasa. Lo que importa es la siguiente. No la perfecta — la constante."
+        faltaron = rutinas_programadas - rutinas_completadas
+        eval_str = (
+            f"Semana {semana} — {rutinas_completadas}/{rutinas_programadas} sesiones. "
+            f"Faltaron {faltaron}. ¿Qué pasó? Si fue por tiempo o energía, puedo ajustar el plan."
+        )
 
-    # Análisis de fatiga
-    if fatiga_promedio <= 2:
-        fatiga_msg = "Energía muy buena — puedes considerar subir intensidad la próxima semana."
-    elif fatiga_promedio <= 3:
-        fatiga_msg = "Fatiga óptima — el plan está calibrado perfecto para ti."
-    elif fatiga_promedio <= 4:
-        fatiga_msg = "Fatiga alta — descansa bien este fin de semana antes de la siguiente semana."
-    else:
-        fatiga_msg = "⚠️ Fatiga crítica detectada — semana que viene con carga reducida."
-
-    # Mensaje de progresiones
+    # Progresiones
     if progresiones >= 3:
-        prog_msg = f"🚀 <b>{progresiones} ejercicios</b> con peso nuevo. Semana de crecimiento real."
-    elif progresiones >= 1:
-        prog_msg = f"📈 <b>{progresiones} progresión{'es' if progresiones > 1 else ''}</b> esta semana."
+        prog_str = f"{progresiones} ejercicios con más carga que la semana anterior."
+    elif progresiones == 1:
+        prog_str = "1 ejercicio con progresión."
+    elif progresiones == 0:
+        prog_str = "Sin progresiones esta semana — la siguiente es la oportunidad."
     else:
-        prog_msg = "➡️ Sin progresiones esta semana — la siguiente es la oportunidad."
+        prog_str = f"{progresiones} progresiones registradas."
 
-    # Proyección motivacional
-    if grupo_principal == "gluteo":
-        proyeccion = (
-            "🍑 <b>Glúteo:</b> Con 3 sesiones/semana y progresión consistente, "
-            "los cambios visibles llegan entre semana 4 y semana 8. "
-            f"Vas en semana <b>{semana}</b>. Sigue."
-        )
-    elif grupo_principal == "pierna":
-        proyeccion = (
-            "🦵 <b>Pierna:</b> La fuerza en sentadilla y prensa mejora rápido. "
-            "En 4 semanas vas a notar que lo que antes era pesado ahora es tu calentamiento."
-        )
+    # Fatiga
+    if fatiga_promedio <= 2.0:
+        fatiga_str = "Fatiga baja — puedes subir intensidad la siguiente semana."
+    elif fatiga_promedio <= 3.0:
+        fatiga_str = "Fatiga dentro del rango normal."
+    elif fatiga_promedio <= 4.0:
+        fatiga_str = "Fatiga alta — prioriza sueño y proteína este fin de semana."
     else:
-        proyeccion = (
-            "💪 La consistencia semanal es lo único que predice resultados a largo plazo. "
-            f"Vas {semana} semanas. El cambio ya está pasando — aunque no lo veas todavía."
-        )
+        fatiga_str = "Fatiga crítica — la semana que viene baja el peso un 20% en todos los ejercicios."
 
-    return (
-        f"📊 <b>RESUMEN SEMANA {semana}</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"{rating}\n"
-        f"<i>{rating_msg}</i>\n\n"
-        f"{'🏃 ' + nombre_s if nombre_s else '🏃'} "
-        f"<b>{rutinas_completadas}/{rutinas_programadas}</b> rutinas completadas {estrella}\n"
-        f"🔗 Racha actual: <b>{racha} días</b>\n"
-        f"{prog_msg}\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"⚡ <b>Estado físico:</b> {fatiga_msg}\n\n"
-        f"{proyeccion}\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"<i>Próxima semana: mismo plan, más peso. Así funciona.</i> 🎯"
-    )
+    # Proyección específica por grupo
+    proyecciones = {
+        "gluteo": (
+            f"Glúteo a semana {semana}: con esta frecuencia y progresión, "
+            f"los cambios visibles suelen aparecer entre semana 6 y 8."
+        ),
+        "pierna": (
+            f"La fuerza en pierna mejora rápido — en 4 semanas lo que hoy es tu peso de trabajo "
+            f"va a ser tu calentamiento."
+        ),
+    }
+    proy_str = proyecciones.get(grupo_principal, "")
+
+    partes = [eval_str, prog_str, fatiga_str]
+    if proy_str:
+        partes.append(proy_str)
+
+    return "\n".join(partes)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MENSAJES DE FATIGA ALTA
+# FATIGA
 # ══════════════════════════════════════════════════════════════════════════════
 
 FATIGA_MSGS = {
-    1: [
-        "😊 Fresco como lechuga. Perfecto — así debería ser la mayoría de los días.",
-        "💚 Energía al 100%. El cuerpo te lo agradece.",
-    ],
-    2: [
-        "🙂 Cansancio leve. Eso es normal — significa que trabajaste.",
-        "💚 Fatiga controlada. El plan está funcionando exactamente como debe.",
-    ],
-    3: [
-        "😐 Fatiga moderada. Monitoreo activado — si se repite dos veces seguidas, ajusto la carga.",
-        "⚡ Moderado. Descansa bien hoy — el músculo crece mientras duermes, no en el gym.",
-    ],
-    4: [
-        "😓 Fatiga alta. Eso me dice que tu cuerpo necesita recuperación real.\n"
-        "Prioridades: 8h de sueño, proteína, hidratación. La siguiente sesión la calibro.",
-        "⚠️ Fatiga alta detectada. Reduzco el volumen de tu próxima sesión.\n"
-        "No es retroceder — es inteligencia deportiva. Los mejores atletas descansan mejor, no más.",
-    ],
-    5: [
-        "💀 Fatiga crítica. Esto es importante: el sobreentrenamiento destruye músculo.\n\n"
-        "Próxima sesión al 60% de carga. Sin negociar. Tu cuerpo está gritando que necesita recuperarse.\n"
-        "<i>Los mejores atletas del mundo priorizan el descanso tanto como el entrenamiento.</i>",
-    ],
+    1: "Fresco. Puedes subir la carga la siguiente sesión.",
+    2: "Cansancio normal.",
+    3: "Fatiga moderada. Si se repite dos veces seguidas ajusto el volumen.",
+    4: (
+        "Fatiga alta. Reduzco el volumen de tu próxima sesión.\n"
+        "Duerme bien hoy — sin recuperación no hay adaptación."
+    ),
+    5: (
+        "Fatiga crítica. Próxima sesión al 60% de carga.\n"
+        "El sobreentrenamiento destruye músculo. No tiene sentido forzar."
+    ),
 }
 
-
 def msg_fatiga(nivel: int, nombre: str = "") -> str:
-    nombre_s = nombre.split()[0] if nombre else ""
-    msgs = FATIGA_MSGS.get(nivel, FATIGA_MSGS[3])
-    msg  = random.choice(msgs)
-    if nombre_s and nivel >= 4:
-        msg = f"{'¡' + nombre_s + '! — ' if nombre_s else ''}{msg}"
-    return msg
+    return FATIGA_MSGS.get(nivel, FATIGA_MSGS[3])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# GAMIFICACIÓN — BADGES Y RACHAS
+# RIR
+# ══════════════════════════════════════════════════════════════════════════════
+
+RIR_MSGS = {
+    0: "Sin reserva. Asegúrate de descansar bien hoy.",
+    1: "RIR 1 — intensidad óptima para hipertrofia.",
+    2: "RIR 2 — zona correcta. El músculo tuvo estímulo sin destruir el sistema nervioso.",
+    3: "RIR 3 o más — el peso estaba ligero. Sube 5-10% la próxima vez.",
+}
+
+def msg_rir(rir: int) -> str:
+    return RIR_MSGS.get(rir, RIR_MSGS[2])
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TIPS CIENTÍFICOS — uno por ejercicio, sin exageración
+# ══════════════════════════════════════════════════════════════════════════════
+
+TIPS_POR_PATRON = {
+    "puente_cadera": [
+        "Pausa 1 segundo arriba con el glúteo contraído. Sin esa pausa pierdes parte del estímulo isométrico.",
+        "Pies cerca del glúteo, no lejos. Cambia el ángulo de activación.",
+        "Empuja con los talones. Si sientes más el cuádriceps, algo está mal con la posición.",
+    ],
+    "bisagra_cadera": [
+        "La bisagra sale de la cadera — si duele la espalda baja, es técnica, no peso.",
+        "Barra pegada al cuerpo durante todo el recorrido. Si se aleja, pierdes mecánica.",
+        "Excéntrico 3 segundos bajando. La fase negativa es donde ocurre el mayor daño muscular útil.",
+    ],
+    "sentadilla": [
+        "Rodillas que siguen la línea de los pies. Si colapsan hacia adentro, hay debilidad de glúteo medio.",
+        "Profundidad mínima: muslos paralelos al suelo. Arriba de eso reduce el rango de activación.",
+        "Pecho arriba. Si miras al suelo, la espalda se redondea bajo carga.",
+    ],
+    "desplante_unilateral": [
+        "Torso adelante 15° activa más glúteo. Torso recto activa más cuádriceps. No es accidental.",
+        "Rodilla delantera sobre el tobillo — si pasa de ahí, aumenta la carga en la articulación.",
+        "Empuja con el talón de la pierna delantera al subir.",
+    ],
+    "press_horizontal": [
+        "Codos a 45° del cuerpo, no perpendiculares. Así protege el manguito rotador bajo carga.",
+        "Escápulas retraídas y fijas en el banco durante todo el movimiento.",
+        "Excéntrico 3 segundos bajando — el músculo crece más en la fase negativa.",
+    ],
+    "jalon_vertical": [
+        "El codo jala hacia el bolsillo, no la mano hacia abajo. Cambia qué músculo trabaja.",
+        "El pecho va a buscar la barra. Si el torso no se mueve, el dorsal no termina el recorrido.",
+    ],
+    "remo_horizontal": [
+        "Escápulas juntas al final de cada rep. Sin eso el dorsal no termina el movimiento.",
+        "Isométrico 1 segundo cuando las escápulas están juntas.",
+    ],
+    "abduccion": [
+        "Movimiento lento y controlado. La inercia le quita trabajo al glúteo medio.",
+        "Si sientes el TFL (lateral del muslo) más que el glúteo, ajusta el ángulo del pie.",
+    ],
+    "patada": [
+        "Rodilla semiflexionada activa más el glúteo que la pierna recta.",
+        "No rotar la cadera hacia arriba — eso es compensación lumbar, no activación glútea.",
+    ],
+}
+
+TIPS_GENERALES = [
+    "Exhala en el esfuerzo, inhala al bajar. No aguantes la respiración bajo carga.",
+    "El músculo crece en recuperación, no durante el entrenamiento. Sueño y proteína.",
+    "Progresión doble: cuando llegas al máximo de reps del rango, sube el peso 2.5-5 kg.",
+    "La técnica correcta con poco peso siempre vale más que técnica rota con mucho.",
+]
+
+def tip_para_patron(patron: str) -> str:
+    msgs = TIPS_POR_PATRON.get(patron, TIPS_GENERALES)
+    return random.choice(msgs)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# GAMIFICACIÓN — sin fanfarria, datos concretos
 # ══════════════════════════════════════════════════════════════════════════════
 
 BADGES = {
-    "primera_rutina":   ("🌱", "Primera rutina",    "El inicio de todo"),
-    "racha_3":          ("🔗", "3 días de racha",    "El hábito empieza aquí"),
-    "racha_7":          ("⚡", "Semana completa",    "7 días seguidos"),
-    "racha_14":         ("💎", "Dos semanas",        "Consistencia real"),
-    "racha_30":         ("🏅", "Mes completo",       "Eres élite"),
-    "rutinas_10":       ("🔥", "10 rutinas",         "Ya eres alguien que entrena"),
-    "rutinas_25":       ("🌟", "25 rutinas",         "Un mes de trabajo"),
-    "rutinas_50":       ("🏆", "50 rutinas",         "Mitad de año de disciplina"),
-    "rutinas_100":      ("👑", "100 rutinas",        "Leyenda"),
-    "progresion_5":     ("📈", "5 progresiones",     "El músculo está creciendo"),
-    "sin_deload":       ("🔩", "4 semanas sin deload","Recuperación perfecta"),
-    "gluteo_specialist":("🍑", "Glúteo Specialist",  "12 sesiones de glúteo completadas"),
-    "perfeccionista":   ("💯", "Semana perfecta",    "100% de rutinas en una semana"),
+    "primera_rutina":    ("", "Primera sesión",     ""),
+    "racha_7":           ("", "7 días seguidos",    ""),
+    "racha_14":          ("", "14 días seguidos",   ""),
+    "racha_30":          ("", "30 días seguidos",   ""),
+    "rutinas_10":        ("", "10 sesiones",        ""),
+    "rutinas_25":        ("", "25 sesiones",        ""),
+    "rutinas_50":        ("", "50 sesiones",        ""),
+    "rutinas_100":       ("", "100 sesiones",       ""),
+    "progresion_5":      ("", "5 progresiones",     ""),
+    "gluteo_specialist": ("", "12 sesiones de glúteo", ""),
+    "perfeccionista":    ("", "Semana completa",    ""),
 }
-
 
 def badge_html(key: str) -> str:
     if key not in BADGES:
         return ""
-    emoji, nombre, desc = BADGES[key]
-    return f"{emoji} <b>{nombre}</b>\n   <i>{desc}</i>"
+    _, nombre, _ = BADGES[key]
+    return f"· {nombre}"
 
-
-def calcular_badges_nuevos(
-    rutinas_totales: int,
-    racha: int,
-    progresiones_totales: int,
-    semanas_sin_deload: int,
-    sesiones_gluteo: int,
-    semana_perfecta: bool,
-) -> list[str]:
-    """Retorna lista de badge keys que se deben otorgar ahora."""
+def calcular_badges_nuevos(rutinas_totales: int, racha: int, progresiones_totales: int,
+                           semanas_sin_deload: int, sesiones_gluteo: int,
+                           semana_perfecta: bool) -> list[str]:
     earned = []
     checks = [
         ("primera_rutina",    rutinas_totales >= 1),
-        ("racha_3",           racha >= 3),
         ("racha_7",           racha >= 7),
         ("racha_14",          racha >= 14),
         ("racha_30",          racha >= 30),
@@ -454,7 +378,6 @@ def calcular_badges_nuevos(
         ("rutinas_50",        rutinas_totales >= 50),
         ("rutinas_100",       rutinas_totales >= 100),
         ("progresion_5",      progresiones_totales >= 5),
-        ("sin_deload",        semanas_sin_deload >= 4),
         ("gluteo_specialist", sesiones_gluteo >= 12),
         ("perfeccionista",    semana_perfecta),
     ]
@@ -465,118 +388,29 @@ def calcular_badges_nuevos(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# BARRA DE PROGRESO VISUAL
+# VISUALES — mínimos y funcionales
 # ══════════════════════════════════════════════════════════════════════════════
 
 def barra_progreso(completados: int, total: int, ancho: int = 10) -> str:
-    """Barra visual tipo [████████░░] con porcentaje."""
     pct    = completados / max(total, 1)
     llenos = round(pct * ancho)
-    return f"[{'█' * llenos}{'░' * (ancho - llenos)}] {completados}/{total}"
-
+    return f"{'█' * llenos}{'░' * (ancho - llenos)} {completados}/{total}"
 
 def barra_racha(racha: int) -> str:
-    """Visualización de racha con fuego."""
     if racha == 0:
-        return "─── Sin racha aún"
-    fuegos  = min(racha, 10)
-    restante = max(0, 10 - fuegos)
-    pct = min(racha, 10) * 10
-    return f"{'🔥' * fuegos}{'·' * restante} {racha} días"
-
+        return "sin racha"
+    return f"{racha} días"
 
 def semaforo_volumen(series: int, opt_low: int, opt_high: int) -> str:
-    """🟢🟡🔴 para el volumen semanal."""
-    if series == 0:               return "⚫"
-    if series < opt_low:          return "🔴"
-    if series <= opt_high:        return "🟢"
-    if series <= opt_high * 1.3:  return "🟡"
-    return "🔴"
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# COACH TIPS — consejos cortos entre ejercicios
-# ══════════════════════════════════════════════════════════════════════════════
-
-TIPS_POR_PATRON = {
-    "puente_cadera": [
-        "💡 Pies cerca del glúteo, no lejos. Entre más cerca, más activación.",
-        "💡 Pausa 1s arriba con el glúteo apretado al máximo. Sin esa pausa, pierdes el 40% del estímulo.",
-        "💡 Empuja con los talones, no con los dedos. Sientes la diferencia inmediatamente.",
-    ],
-    "bisagra_cadera": [
-        "💡 La bisagra sale de la cadera, no de la espalda. Si duele la espalda, es técnica.",
-        "💡 Barra (o mancuernas) pegadas al cuerpo todo el tiempo. Si se alejan, pierdes fuerza y arriesgas espalda.",
-        "💡 Excéntrico 3 segundos bajando. Eso es donde ocurre el 60% del crecimiento muscular.",
-    ],
-    "sentadilla": [
-        "💡 Rodillas siguen la línea de los pies. Si colapsan hacia adentro, glúteo débil — trabájalo.",
-        "💡 Profundidad mínima: muslos paralelos al suelo. Arriba de eso es un cuarto de sentadilla.",
-        "💡 Pecho arriba, mirada al frente. Si miras al suelo, la espalda se redondea.",
-    ],
-    "desplante_unilateral": [
-        "💡 Torso adelante 15° = más glúteo. Torso recto = más cuádriceps. Elige.",
-        "💡 Rodilla delantera sobre el tobillo. Si pasa el tobillo, estrés en la rodilla.",
-        "💡 Empuja con el talón de la pierna delantera para subir. Así activa el glúteo.",
-    ],
-    "press_horizontal": [
-        "💡 Codos a 45° del cuerpo — no perpendiculares. Así proteges el manguito rotador.",
-        "💡 Escápulas retraídas y fijas en el banco durante todo el movimiento.",
-        "💡 Excéntrico 3 segundos bajando. El músculo crece más en la fase negativa.",
-    ],
-    "jalon_vertical": [
-        "💡 Piensa en jalar los codos hacia los bolsillos — no en jalar la barra.",
-        "💡 El pecho va a buscar la barra, no al revés.",
-        "💡 No balancees el torso. Si lo haces, estás usando inercia, no músculo.",
-    ],
-    "remo_horizontal": [
-        "💡 Junta escápulas al final. Si no las juntas, el dorsal no termina el movimiento.",
-        "💡 Codo pegado al cuerpo — no afuera. Cambiar de remo a trapecio.",
-        "💡 Isométrico 1s cuando las escápulas están juntas. Eso marca la diferencia.",
-    ],
-}
-
-TIPS_GENERALES = [
-    "💡 Respira: exhala en el esfuerzo, inhala al bajar. No aguantes la respiración.",
-    "💡 El músculo crece entre sesiones, no durante. Sueño + proteína = resultados.",
-    "💡 RIR 2 significa 2 reps de reserva. Si puedes hacer 10 más, no estás trabajando.",
-    "💡 La técnica perfecta con poco peso > técnica rota con mucho peso. Siempre.",
-    "💡 Progresión doble: cuando llegues al máximo de reps, sube el peso 2.5-5kg.",
-    "💡 El calentamiento no es opcional. Reduce lesiones y mejora el rendimiento real.",
-]
-
-
-def tip_para_patron(patron: str) -> str:
-    msgs = TIPS_POR_PATRON.get(patron, TIPS_GENERALES)
-    return random.choice(msgs)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# RIR — mensajes contextuales
-# ══════════════════════════════════════════════════════════════════════════════
-
-RIR_CONTEXTO = {
-    0: "🔥 Sin reserva — dejaste todo. Asegúrate de recuperarte bien hoy.",
-    1: "💪 RIR 1 — intensidad óptima para hipertrofia. Exactamente donde debes estar.",
-    2: "✅ RIR 2 — la zona dorada. Estimulas el músculo sin destruir el sistema nervioso.",
-    3: "😌 RIR 3+ — demasiado fácil. La próxima vez sube el peso un 5-10%. El músculo necesita motivo para crecer.",
-}
-
-
-def msg_rir(rir: int) -> str:
-    return RIR_CONTEXTO.get(rir, RIR_CONTEXTO[2])
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# DELOAD — mensaje de recuperación
-# ══════════════════════════════════════════════════════════════════════════════
+    if series == 0:              return "○"
+    if series < opt_low:         return "↓"
+    if series <= opt_high:       return "✓"
+    if series <= opt_high * 1.3: return "↑"
+    return "↑↑"
 
 DELOAD_MSG = (
-    "🔄 <b>SEMANA DE RECUPERACIÓN ACTIVA</b>\n\n"
-    "Esto no es retroceder — es parte del plan.\n\n"
-    "La súper-compensación (el fenómeno que te hace crecer) "
-    "ocurre <i>durante</i> el descanso, no durante el entrenamiento.\n\n"
-    "Esta semana: <b>mismos ejercicios, 60% de la carga</b>.\n"
-    "Enfócate en técnica perfecta. Tu cuerpo va a agradecer esto "
-    "con más fuerza la semana siguiente. Garantizado. 🔬"
+    "Semana de recuperación.\n\n"
+    "Mismos ejercicios, 60% de la carga habitual. "
+    "La súper-compensación — el fenómeno que produce el crecimiento real — "
+    "ocurre durante el descanso. Esta semana es parte del plan, no una pausa."
 )
