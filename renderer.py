@@ -107,9 +107,9 @@ def rutina_html(user_id: int, semana: int, dia: str) -> tuple[str, InlineKeyboar
     # CALENTAMIENTO
     cal_items = cat.CALENTAMIENTO.get(grupo_dia, cat.CALENTAMIENTO.get("cardio", []))
     if cal_items:
-        msg += "<b>Calentamiento</b> (8-10 min)\n"
-        for nc, sc, nota in cal_items:
-            msg += f"  {nc} — {sc}\n"
+        msg += "<b>Calentamiento</b> (5 min)\n"
+        for nc, nota in cal_items:
+            msg += f"  {nc}\n"
         msg += "\n"
 
     # EJERCICIOS
