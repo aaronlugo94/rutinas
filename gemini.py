@@ -222,10 +222,57 @@ def build_prompt(perfil: dict, num_semana: int, ambiente: str = "gym") -> str:
         "band": "AMBIENTE: Banda elástica — todos los ejercicios deben ser con banda.",
     }.get(ambiente, "")
 
+    # Plantillas de estructura por grupo del día
+    plantillas_grupo = {
+        "pierna": (
+            "Pos 1: compuesto pierna (sentadilla, prensa, hack squat) — mayor EMG\n"
+            "Pos 2: bisagra/isquiotibial (RDL, curl femoral, good morning)\n"
+            "Pos 3: unilateral o accesorio pierna (desplante, step-up, goblet)\n"
+            "Pos 4: aislamiento (extensión cuádriceps, elevación talones, curl pie)\n"
+            "Pos 5: CARDIO zona 2"
+        ),
+        "gluteo": (
+            "Pos 1: puente_cadera o puente_cadera_unilateral — EMG máximo\n"
+            "Pos 2: bisagra_cadera (RDL, good morning)\n"
+            "Pos 3: desplante_unilateral o sentadilla\n"
+            "Pos 4: aislamiento glúteo (patada, abducción)\n"
+            "Pos 5: CARDIO zona 2 — preferir caminata inclinada o step"
+        ),
+        "empuje": (
+            "Pos 1: press horizontal pesado (press pecho mancuernas/máquina)\n"
+            "Pos 2: press inclinado o press vertical (hombro)\n"
+            "Pos 3: aislamiento pecho (aperturas) o press variante\n"
+            "Pos 4: aislamiento hombro o tríceps (lateral, jalón polea)\n"
+            "Pos 5: CARDIO zona 2"
+        ),
+        "tiron": (
+            "Pos 1: jalón vertical o remo horizontal — compuesto pesado\n"
+            "Pos 2: remo variante (remo mancuerna, remo máquina)\n"
+            "Pos 3: jalón o remo accesorio\n"
+            "Pos 4: aislamiento (curl bíceps, face pull, curl martillo)\n"
+            "Pos 5: CARDIO zona 2"
+        ),
+        "general": (
+            "Pos 1-4: 4 ejercicios de fuerza del grupo asignado, mayor a menor EMG\n"
+            "Pos 5: CARDIO zona 2"
+        ),
+    }
+
     ejemplo = (
-        '{"semana":1,"dias":[{"dia":"lunes","grupo":"gluteo","ejercicios":'
-        '[{"ejercicio_id":"GLU_G02","orden":1,"series":4,"reps":"10-12","notas":"pausa 1s arriba"}]}]}'
+        '{"semana":1,"dias":[{"dia":"lunes","grupo":"pierna","ejercicios":'
+        '[{"ejercicio_id":"PIE_G01","orden":1,"series":4,"reps":"6-8","notas":"profundidad paralela"},'
+        '{"ejercicio_id":"PIE_G05","orden":2,"series":3,"reps":"10-12","notas":"excéntrico 3s"},'
+        '{"ejercicio_id":"PIE_G08","orden":3,"series":3,"reps":"10-12","notas":"torso recto"},'
+        '{"ejercicio_id":"PIE_G04","orden":4,"series":3,"reps":"12-15","notas":"contracción 1s"},'
+        '{"ejercicio_id":"CAR_G02","orden":5,"series":1,"reps":"20min","notas":"zona 2"}]}]}'
     )
+
+    # Obtener plantilla para los grupos de este split
+    plantillas_texto = ""
+    grupos_usados = list(dict.fromkeys(grupos))  # únicos, orden preservado
+    for g in grupos_usados:
+        plantilla = plantillas_grupo.get(g, plantillas_grupo["general"])
+        plantillas_texto += f"\nGRUPO {g.upper()}:\n{plantilla}\n"
 
     return f"""INSTRUCCION: Responde SOLO con JSON puro. Sin texto. Sin markdown. Solo el objeto JSON.
 
@@ -233,7 +280,7 @@ CATALOGO — usa SOLO estos IDs exactos:
 {catalogo}
 
 TAREA: Genera semana {num_semana}/4.
-  Nivel: {nivel} | Objetivo: {obj} | Género: {genero}
+  Nivel: {nivel} | Objetivo: {obj}
   Días: {dias} ({', '.join(dias_nombres)}) | Duración: {dur}min | Limitaciones: {lim}
 
 {ambiente_nota}
@@ -245,30 +292,29 @@ PROTOCOLO SEMANA {num_semana}:
   Series base: {series_base} | Reps: {reps_base} | RIR: {rir_base}
   {deload_nota}
 
-ESTRUCTURA POR DÍA — exactamente 5 ejercicios:
-  Los ejercicios deben ordenarse de MAYOR a MENOR EMG score del músculo objetivo.
-  Pos 5: CARDIO zona 2 SIEMPRE al final ({cardio_ids})
-         series=1, reps="20min", NUNCA HIIT, NUNCA >zona 3
+ESTRUCTURA OBLIGATORIA — exactamente 5 ejercicios por día:
+{plantillas_texto}
+CARDIO: siempre pos 5, series=1, reps="20min" ({cardio_ids})
 
 {obj_protocolo}
 
 {genero_protocolo}
 
-NIVEL — dificultad y selección de ejercicios:
+NIVEL:
   {nivel_protocolo}
 {lim_protocolo}
 
-REGLAS BIOMECÁNICAS (el backend rechaza violaciones):
-  - Máx 1 sentadilla por día (fatiga cuádriceps)
+REGLAS (el backend rechaza violaciones):
+  - Máx 1 sentadilla por día
   - Máx 1 bisagra de cadera por día
   - Máx 1 jalón vertical por día
-  - Cardio: series=1, reps="20min" — nunca series=3
-  - reps siempre string: "15" "8-10" "20min" — NUNCA número
-  - Notas: máx 5 palabras, sin comillas internas
-  - S2-S3: mismos ejercicios S1, más carga o menos RIR
-  - S4 DELOAD: mismos ejercicios S1, 60% carga, RIR alto
+  - Cardio: series=1, reps="20min" siempre
+  - reps siempre string: "8-10" "15" "20min" — NUNCA número
+  - Notas: máx 6 palabras
+  - S2-S3: mismos ejercicios que S1, ajusta series/reps
+  - S4 DELOAD: mismos ejercicios S1, series -1, reps iguales
 
-FORMATO EXACTO (solo JSON):
+EJEMPLO FORMATO (solo JSON):
 {ejemplo}
 
 JSON:"""
