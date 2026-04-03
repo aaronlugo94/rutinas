@@ -442,3 +442,4 @@ def adjust_series(user_id: int, semana: int, dia: str, delta: int, solo_accesori
                 "UPDATE rutinas SET series=? WHERE id=?",
                 (max(2, min(6, int(row["series"] or 3) + delta)), row["id"]),
             )
+
