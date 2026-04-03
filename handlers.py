@@ -510,37 +510,16 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if nombre:
             db.upsert_perfil(uid, nombre=nombre)
 
-        pasos = [
-            "🧠 <b>Analizando tu perfil...</b>",
-            "🔬 <b>Aplicando ciencia EMG (Contreras 2015)...</b>",
-            "🍑 <b>Optimizando split de glúteo...</b>",
-            "✍️ <b>Generando tu plan personalizado...</b>",
-        ]
-        for paso in pasos:
-            await query.edit_message_text(paso, parse_mode="HTML")
-            await asyncio.sleep(2.2)
+        await query.edit_message_text("Generando tu plan...", parse_mode="HTML")
 
-        client = _client()
-
-        async def on_progress(num: int) -> None:
-            icons = ["🧠", "📊", "🏗", "✍️"]
-            await query.edit_message_text(
-                f"{icons[num-1]} <b>Generando semana {num}/4...</b>", parse_mode="HTML",
-            )
-
-        semanas, error = await gem.generar_plan_completo(
-            client, perfil, ambiente=ambiente, on_progress=on_progress,
+        import planner
+        semanas = planner.generar_plan(
+            nivel      = perfil.get("nivel", "intermedio"),
+            objetivo   = objetivo,
+            dias       = dias,
+            ambiente   = ambiente,
+            limitacion = perfil.get("limitaciones", "ninguna"),
         )
-
-        if error or not semanas:
-            await query.edit_message_text(
-                f"❌ <b>Error:</b> {error}\n\nIntenta de nuevo.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔄 Reintentar", callback_data="menu:nuevo")
-                ]]),
-                parse_mode="HTML",
-            )
-            return
 
         swaps = db.get_swaps(uid)
         n     = db.insert_plan(uid, semanas, swaps, cat.BY_ID)
