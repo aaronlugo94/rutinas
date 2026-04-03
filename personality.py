@@ -21,48 +21,31 @@ BIENVENIDA = """<b>GymCoach</b>
 
 Rutinas basadas en ciencia, no en YouTube.
 
-El plan se genera según tu objetivo, nivel y dónde entrenas. Se ajusta cada semana según cómo te fue la anterior — si progresaste, sube; si estás agotada, baja.
+El plan se genera según tu objetivo, nivel y dónde entrenas. Se ajusta cada semana según cómo te fue la anterior — si progresaste, sube; si estás agotado/a, baja.
 
 Cinco preguntas y listo."""
 
 
-def bienvenida_objetivo(objetivo: str, genero: str) -> str:
+def bienvenida_objetivo(objetivo: str, genero: str = "") -> str:
     configs = {
-        ("gluteo", "mujer"): (
+        "gluteo": (
             "Objetivo: glúteo.\n\n"
-            "El plan usa periodización ondulatoria — tres tipos de sesión que rotan cada semana "
-            "(fuerza, hipertrofia, metabólico). Contreras (2015) demostró que esa variación "
-            "produce más crecimiento que hacer siempre el mismo rango de reps.\n\n"
-            "El hip thrust va primero en cada sesión de glúteo. Siempre."
+            "El plan usa periodización ondulatoria — tres tipos de sesión que rotan "
+            "(fuerza, hipertrofia, metabólico). El hip thrust va primero en cada sesión. "
+            "Contreras (2015): activa el glúteo al 200% del máximo voluntario."
         ),
-        ("gluteo", "hombre"): (
-            "Objetivo: pierna y glúteo.\n\n"
-            "Sentadilla, peso muerto rumano, prensa alta. Los compuestos primero, "
-            "aislamiento al final cuando el músculo ya está agotado."
-        ),
-        ("peso", "mujer"): (
+        "peso": (
             "Objetivo: pérdida de grasa.\n\n"
-            "El plan combina fuerza y cardio zona 2. La zona 2 quema grasa sin destruir músculo "
-            "— al contrario del HIIT post-entrenamiento, que eleva cortisol y cataboliza."
+            "Fuerza + cardio zona 2. La zona 2 oxida grasa sin elevar cortisol — "
+            "al contrario del HIIT intenso post-fuerza, que cataboliza músculo."
         ),
-        ("peso", "hombre"): (
-            "Objetivo: recomposición corporal.\n\n"
-            "Déficit calórico moderado con entrenamiento de fuerza. "
-            "El músculo que mantengas mientras bajas de peso define el resultado final."
-        ),
-        ("general", "mujer"): (
-            "Objetivo: cuerpo completo.\n\n"
-            "Énfasis en pierna y glúteo con trabajo de upper body para equilibrio. "
-            "Frecuencia 2x por grupo muscular por semana."
-        ),
-        ("general", "hombre"): (
+        "general": (
             "Objetivo: fuerza y estética.\n\n"
-            "Pecho, espalda, hombros, brazos, piernas. "
-            "Split diseñado para frecuencia 2x por músculo — más efectivo que el clásico bro split."
+            "Pecho, espalda, hombros, piernas. Frecuencia 2x por músculo por semana "
+            "(Schoenfeld 2016) — más efectivo que el bro split clásico."
         ),
     }
-    key = (objetivo, genero)
-    return configs.get(key, configs[("general", "hombre")])
+    return configs.get(objetivo, configs["general"])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
