@@ -320,7 +320,7 @@ def generar_resumen_semanal(user_id: int, semana: int) -> str:
     barra_xp = p.barra_progreso(xp_en_nivel, xp_para_nivel, ancho=10)
 
     xp_block = (
-        f"\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"\n"
         f"⚡ <b>{nivel}</b>\n"
         f"   {barra_xp}\n"
         f"   <i>{xp_total} XP totales</i>"
@@ -367,30 +367,27 @@ def stats_completos_html(user_id: int) -> str:
     )
     racha_max = int(row_gam["racha_maxima"]) if row_gam else racha
 
-    _, xp_en_nivel, xp_para_nivel = get_siguiente_nivel(xp_total)
+    siguiente_nivel, xp_en_nivel, xp_para_nivel = get_siguiente_nivel(xp_total)
     barra_xp  = p.barra_progreso(xp_en_nivel, xp_para_nivel, ancho=10)
     barra_r   = p.barra_racha(racha)
 
     nombre_s = nombre.split()[0] if nombre else "Tú"
 
     lineas = [
-        f"📊 <b>ESTADÍSTICAS — {nombre_s.upper()}</b>",
-        "━━━━━━━━━━━━━━━━━━━━━━━━",
+        f"<b>{nombre_s if nombre_s else 'Stats'}</b>",
         "",
-        f"⚡ <b>{nivel}</b>",
-        f"   {barra_xp}",
-        f"   <i>{xp_total} XP · siguiente: {xp_para_nivel - xp_en_nivel} XP</i>",
+        f"<b>{nivel}</b>",
+        f"{barra_xp}",
+        f"<i>{xp_total} XP · faltan {xp_para_nivel - xp_en_nivel} para {siguiente_nivel}</i>",
         "",
-        "━━━━━━━━━━━━━━━━━━━━━━━━",
-        f"💪 Rutinas completadas: <b>{stats['rutinas_completas']}</b>",
-        f"🔥 Racha actual:        <b>{barra_r}</b>",
-        f"🏆 Racha máxima:        <b>{racha_max} días</b>",
-        f"📈 Progresiones totales: <b>{_contar_progresiones(user_id)}</b>",
-        "",
+        f"Sesiones completadas: <b>{stats['rutinas_completas']}</b>",
+        f"Racha actual: <b>{barra_r}</b>",
+        f"Racha máxima: <b>{racha_max} días</b>",
+        f"Progresiones: <b>{_contar_progresiones(user_id)}</b>",
     ]
 
     if badges_u:
-        lineas += ["━━━━━━━━━━━━━━━━━━━━━━━━", f"🏅 <b>Badges ({len(badges_u)})</b>", ""]
+        lineas += ["", f"<b>Logros</b>"]
         for key in badges_u:
             if key in p.BADGES:
                 lineas.append(p.badge_html(key))
