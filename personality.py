@@ -28,6 +28,13 @@ Cinco preguntas y listo."""
 
 def bienvenida_objetivo(objetivo: str, genero: str = "") -> str:
     configs = {
+        "mamado": (
+            "Objetivo: hipertrofia máxima.\n\n"
+            "PPL — Push/Pull/Legs. Frecuencia 2x por músculo por semana (Schoenfeld 2016). "
+            "Volumen dentro del MAV de Israetel. Barras libres primero: press barra, "
+            "dominadas con lastre, sentadilla libre, peso muerto.\n\n"
+            "Cardio mínimo — 15 min zona 2. El exceso de cardio interfiere con la síntesis proteica."
+        ),
         "gluteo": (
             "Objetivo: glúteo.\n\n"
             "El plan usa periodización ondulatoria — tres tipos de sesión que rotan "
