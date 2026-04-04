@@ -402,12 +402,13 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         objetivo = data.split(":")[1]
         if objetivo == "inicio":
             teclado = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🍑 Glúteo y pierna",  callback_data="obj:gluteo")],
-                [InlineKeyboardButton("🔥 Perder grasa",     callback_data="obj:peso")],
-                [InlineKeyboardButton("💪 Cuerpo completo",  callback_data="obj:general")],
+                [InlineKeyboardButton("💪 Ponerme mamado / hipertrofia", callback_data="obj:mamado")],
+                [InlineKeyboardButton("🍑 Glúteo y pierna",              callback_data="obj:gluteo")],
+                [InlineKeyboardButton("🔥 Perder grasa",                 callback_data="obj:peso")],
+                [InlineKeyboardButton("⚡ Cuerpo completo / general",    callback_data="obj:general")],
             ])
             await query.edit_message_text(
-                "🆕 <b>1 de 6</b> — ¿Cuál es tu objetivo principal?",
+                "<b>1 de 6</b> — ¿Cuál es tu objetivo principal?",
                 reply_markup=teclado, parse_mode="HTML",
             )
         else:
@@ -708,4 +709,3 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(callback_router))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handler_texto))
-    
