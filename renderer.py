@@ -139,13 +139,13 @@ def rutina_html(user_id: int, semana: int, dia: str) -> tuple[str, InlineKeyboar
             # Peso sugerido basado en historial real
             ultimo   = db.get_ultimo_peso(user_id, eid)
             peso_sug = db.get_peso_sugerido(user_id, eid)
-            if ultimo and ultimo.get("peso_kg"):
-                ult_kg  = f"{ultimo['peso_kg']:g}"
+            if ultimo and ultimo.get("peso_lbs"):
+                ult_kg  = f"{ultimo['peso_lbs']:g}"
                 ult_rep = ultimo.get("reps_hechas") or ex["reps"]
                 if peso_sug and peso_sug != ult_kg:
-                    msg += f"   Última: {ult_kg}kg → <b>Hoy: {peso_sug}kg</b>\n"
+                    msg += f"   Última: {ult_kg} lbs → <b>Hoy: {peso_sug} lbs</b>\n"
                 else:
-                    msg += f"   Última: {ult_kg}kg × {ex['series']}×{ult_rep}\n"
+                    msg += f"   Última: {ult_kg} lbs × {ex['series']}×{ult_rep}\n"
             elif ex.get("notas"):
                 msg += f"   <i>{safe(ex['notas'])}</i>\n"
 
@@ -171,11 +171,7 @@ def rutina_html(user_id: int, semana: int, dia: str) -> tuple[str, InlineKeyboar
     # NUTRICIÓN
     obj_key = "gluteo" if grupo_dia == "gluteo" else ("peso" if "peso" in grupo_dia else "general")
     nutr    = cat.NUTRICION.get(obj_key, cat.NUTRICION["general"])
-    msg += (
-        f"\n<b>Hoy</b>\n"
-        f"  {nutr['pre']}\n"
-        f"  {nutr['post']}\n"
-    )
+    msg += f"\n{nutr['pre']}\n{nutr['post']}\n"
 
     keyboard += [
         [InlineKeyboardButton("📋 Plan completo",         callback_data=f"plan:{semana}")],
@@ -191,7 +187,7 @@ def _msg_dia_libre(dia: str) -> str:
         f"🌿 <b>{dia.capitalize()} — Día de descanso activo</b>\n\n"
         "El descanso no es opcional. Es donde crece el músculo.\n\n"
         "✔ Duerme 7-9 horas — ahí ocurre la síntesis proteica\n"
-        "✔ Proteína alta aunque no entrenes (1.6-2.2g/kg)\n"
+        "✔ Proteína alta aunque no entrenes (0.7-1g/lb)\n"
         "✔ Caminata 20-30 min activa la recuperación sin fatiga\n\n"
         "<i>Tu cuerpo se está volviendo más fuerte hoy. 💚</i>"
     )
