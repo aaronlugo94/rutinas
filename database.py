@@ -72,10 +72,19 @@ def init_db() -> None:
         ejercicio_id TEXT NOT NULL,
         semana INTEGER NOT NULL,
         dia TEXT NOT NULL,
-        peso_kg REAL,
+        peso_lbs REAL,
         series_hechas INTEGER,
         reps_hechas TEXT,
         fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS peso_flow (
+        user_id INTEGER PRIMARY KEY,
+        semana INTEGER,
+        dia TEXT,
+        ejercicios TEXT,
+        idx INTEGER DEFAULT 0,
+        updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE INDEX IF NOT EXISTS idx_pesos_user_ej
@@ -250,12 +259,14 @@ def has_plan(user_id: int) -> bool:
 
 
 def clear_plan(user_id: int, keep_swaps: bool = False) -> None:
+    """Borra el plan. Los pesos (historial) siempre se conservan."""
     with get_db() as conn:
-        for tabla in ("rutinas", "progreso", "prioridad_bloques", "sesion_ambiente"):
+        for tabla in ("rutinas", "progreso", "prioridad_bloques", "sesion_ambiente", "peso_flow"):
             conn.execute(f"DELETE FROM {tabla} WHERE user_id=?", (user_id,))
         if not keep_swaps:
             conn.execute("DELETE FROM swaps WHERE user_id=?", (user_id,))
         conn.execute("DELETE FROM estado WHERE user_id=?", (user_id,))
+    # pesos se conservan siempre — son historial personal
 
 
 # ─── PLAN Y EJERCICIOS ────────────────────────────────────────────────────────
@@ -425,17 +436,17 @@ def get_stats(user_id: int) -> dict:
 # ─── REGISTRO DE PESOS ────────────────────────────────────────────────────────
 
 def save_peso(user_id: int, ejercicio_id: str, semana: int, dia: str,
-              peso_kg: float | None, series: int | None = None,
+              peso_lbs: float | None, series: int | None = None,
               reps: str | None = None) -> None:
     execute("""
-        INSERT INTO pesos (user_id, ejercicio_id, semana, dia, peso_kg, series_hechas, reps_hechas)
+        INSERT INTO pesos (user_id, ejercicio_id, semana, dia, peso_lbs, series_hechas, reps_hechas)
         VALUES (?,?,?,?,?,?,?)
-    """, (user_id, ejercicio_id, semana, dia, peso_kg, series, reps))
+    """, (user_id, ejercicio_id, semana, dia, peso_lbs, series, reps))
 
 
 def get_ultimo_peso(user_id: int, ejercicio_id: str) -> dict | None:
     row = fetchone("""
-        SELECT peso_kg, series_hechas, reps_hechas, semana, dia, fecha
+        SELECT peso_lbs, series_hechas, reps_hechas, semana, dia, fecha
         FROM pesos
         WHERE user_id=? AND ejercicio_id=?
         ORDER BY fecha DESC LIMIT 1
@@ -445,7 +456,7 @@ def get_ultimo_peso(user_id: int, ejercicio_id: str) -> dict | None:
 
 def get_historial_peso(user_id: int, ejercicio_id: str, limit: int = 8) -> list[dict]:
     rows = fetchall("""
-        SELECT peso_kg, series_hechas, reps_hechas, semana, fecha
+        SELECT peso_lbs, series_hechas, reps_hechas, semana, fecha
         FROM pesos
         WHERE user_id=? AND ejercicio_id=?
         ORDER BY fecha DESC LIMIT ?
@@ -460,9 +471,9 @@ def get_peso_sugerido(user_id: int, ejercicio_id: str) -> str:
     Si no hay historial, devuelve string vacío.
     """
     ultimo = get_ultimo_peso(user_id, ejercicio_id)
-    if not ultimo or not ultimo["peso_kg"]:
+    if not ultimo or not ultimo["peso_lbs"]:
         return ""
-    peso = float(ultimo["peso_kg"])
+    peso = float(ultimo["peso_lbs"])
 
     # Buscar RIR de esa sesión
     row_rir = fetchone("""
@@ -474,7 +485,7 @@ def get_peso_sugerido(user_id: int, ejercicio_id: str) -> str:
 
     if rir >= 3:
         # Demasiado fácil — sube más
-        nuevo = round(peso * 1.05 / 2.5) * 2.5
+        nuevo = round(peso * 1.05 / 5) * 5
     elif rir <= 1:
         # Muy difícil — mantén o sube poco
         nuevo = round(peso * 1.025 / 2.5) * 2.5
@@ -482,7 +493,6 @@ def get_peso_sugerido(user_id: int, ejercicio_id: str) -> str:
         # RIR 2 — progresión estándar
         nuevo = round(peso * 1.025 / 2.5) * 2.5
 
-    nuevo = max(nuevo, peso)  # nunca bajar sugerencia
     return f"{nuevo:.1f}".rstrip("0").rstrip(".")
 
 
@@ -503,20 +513,49 @@ def get_progresiones_con_peso(user_id: int, semana: int) -> list[dict]:
     """
     rows = fetchall("""
         SELECT p.ejercicio_id, r.ejercicio,
-               p.peso_kg as peso_actual, p.semana,
-               prev.peso_kg as peso_anterior
+               p.peso_lbs as peso_actual, p.semana,
+               prev.peso_lbs as peso_anterior
         FROM pesos p
         JOIN rutinas r ON r.user_id = p.user_id AND r.ejercicio_id = p.ejercicio_id
         LEFT JOIN pesos prev ON prev.user_id = p.user_id
             AND prev.ejercicio_id = p.ejercicio_id
             AND prev.semana = p.semana - 1
         WHERE p.user_id = ? AND p.semana = ?
-            AND p.peso_kg IS NOT NULL
-            AND (prev.peso_kg IS NULL OR p.peso_kg > prev.peso_kg)
+            AND p.peso_lbs IS NOT NULL
+            AND (prev.peso_lbs IS NULL OR p.peso_lbs > prev.peso_lbs)
         GROUP BY p.ejercicio_id
-        ORDER BY (p.peso_kg - COALESCE(prev.peso_kg, 0)) DESC
+        ORDER BY (p.peso_lbs - COALESCE(prev.peso_lbs, 0)) DESC
     """, (user_id, semana))
     return [dict(r) for r in rows]
+
+
+# ─── ESTADO DE FLUJO DE PESOS (persiste en DB, no en memoria) ─────────────────
+
+def save_peso_flow(user_id: int, semana: int, dia: str,
+                   ejercicios: list[str], idx: int) -> None:
+    import json
+    execute("""
+        INSERT INTO peso_flow (user_id, semana, dia, ejercicios, idx)
+        VALUES (?,?,?,?,?)
+        ON CONFLICT(user_id) DO UPDATE SET semana=?, dia=?, ejercicios=?, idx=?, updated=CURRENT_TIMESTAMP
+    """, (user_id, semana, dia, json.dumps(ejercicios), idx,
+          semana, dia, json.dumps(ejercicios), idx))
+
+
+def get_peso_flow(user_id: int) -> dict | None:
+    import json
+    row = fetchone("SELECT * FROM peso_flow WHERE user_id=?", (user_id,))
+    if not row:
+        return None
+    return {
+        "semana": row["semana"], "dia": row["dia"],
+        "ejercicios": json.loads(row["ejercicios"]),
+        "idx": row["idx"],
+    }
+
+
+def clear_peso_flow(user_id: int) -> None:
+    execute("DELETE FROM peso_flow WHERE user_id=?", (user_id,))
 
 # ─── SWAPS ────────────────────────────────────────────────────────────────────
 
