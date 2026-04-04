@@ -135,9 +135,19 @@ def rutina_html(user_id: int, semana: int, dia: str) -> tuple[str, InlineKeyboar
             t = ex["reps"] if "min" in str(ex["reps"]) else "20min"
             msg += f"   {t} · Zona 2 (120-135 bpm)\n"
         else:
-            msg += f"   📌 <b>{ex['series']} × {safe(ex['reps'])} reps</b>\n"
-            if ex.get("notas"):
-                msg += f"   💡 <i>{safe(ex['notas'])}</i>\n"
+            msg += f"   {ex['series']} × {safe(ex['reps'])} reps\n"
+            # Peso sugerido basado en historial real
+            ultimo   = db.get_ultimo_peso(user_id, eid)
+            peso_sug = db.get_peso_sugerido(user_id, eid)
+            if ultimo and ultimo.get("peso_kg"):
+                ult_kg  = f"{ultimo['peso_kg']:g}"
+                ult_rep = ultimo.get("reps_hechas") or ex["reps"]
+                if peso_sug and peso_sug != ult_kg:
+                    msg += f"   Última: {ult_kg}kg → <b>Hoy: {peso_sug}kg</b>\n"
+                else:
+                    msg += f"   Última: {ult_kg}kg × {ex['series']}×{ult_rep}\n"
+            elif ex.get("notas"):
+                msg += f"   <i>{safe(ex['notas'])}</i>\n"
 
         if not es_cardio:
             keyboard.append([
@@ -168,9 +178,9 @@ def rutina_html(user_id: int, semana: int, dia: str) -> tuple[str, InlineKeyboar
     )
 
     keyboard += [
-        [InlineKeyboardButton("📋 Plan completo",      callback_data=f"plan:{semana}")],
-        [InlineKeyboardButton("📊 Mi progreso",        callback_data="ver_stats")],
-        [InlineKeyboardButton("🏁 ¡Terminé la rutina!", callback_data=f"finish:{semana}:{dia}")],
+        [InlineKeyboardButton("📋 Plan completo",         callback_data=f"plan:{semana}")],
+        [InlineKeyboardButton("📊 Mi progreso",           callback_data="ver_stats")],
+        [InlineKeyboardButton("✅ Terminé — registrar pesos", callback_data=f"finish:{semana}:{dia}")],
     ]
 
     return msg, InlineKeyboardMarkup(keyboard)
