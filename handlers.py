@@ -69,23 +69,18 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     semana, dia = db.get_estado(uid)
     perfil      = db.get_perfil(uid)
-    stats       = db.get_stats(uid)
-    racha       = gam.get_racha(uid)
-    xp          = gam.get_xp(uid)
-    nivel       = gam.get_nivel(xp)
-    grupo_hoy   = _grupo_del_dia(uid, semana, dia)
-
-    saludo = p.saludo_inicio(
+    stats     = db.get_stats(uid)
+    racha     = gam.get_racha(uid)
+    grupo_hoy = _grupo_del_dia(uid, semana, dia)
+    saludo    = p.saludo_inicio(
         nombre          = nombre,
         racha           = racha,
         genero          = perfil.get("genero", "mujer"),
         grupo_hoy       = grupo_hoy,
         rutinas_totales = stats["rutinas_completas"],
     )
-    header = (
-        f"⚡ {nivel}  ·  🔥 {p.barra_racha(racha)}  ·  💪 {stats['rutinas_completas']} rutinas\n\n"
-        f"{saludo}\n\n"
-    )
+    racha_str = f"  🔥 {racha}d" if racha > 0 else ""
+    header    = f"{saludo}{racha_str}\n\n"
 
     texto, teclado = ren.rutina_html(uid, semana, dia)
     await update.message.reply_text(
@@ -144,6 +139,43 @@ async def cmd_reset_plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
 
 
+async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await check_auth(update):
+        return
+    texto = (
+        "<b>GymCoach</b>\n\n"
+
+        "<b>Flujo básico</b>\n"
+        "1. /start → ver rutina del día\n"
+        "2. Entrena todos los ejercicios\n"
+        "3. Toca ✅ Terminé\n"
+        "4. Registra cuántas lbs usaste (escribe el número)\n"
+        "5. Dinos cómo estuvo la sesión\n"
+        "→ La siguiente semana el bot te dice cuánto subir\n\n"
+
+        "<b>Botones en la rutina</b>\n"
+        "🔄 — Cambiar ese ejercicio por otro\n"
+        "✅ Terminé — Marcar sesión completa\n"
+        "📊 Stats — Ver progreso y badges\n"
+        "📋 Plan — Ver las 4 semanas\n\n"
+
+        "<b>Comandos</b>\n"
+        "/start — Rutina de hoy\n"
+        "/stats — Progreso y badges\n"
+        "/resumen — Resumen de la semana\n"
+        "/plan — Plan completo\n"
+        "/reset_plan — Crear nuevo plan\n"
+        "  (tu historial de pesos se conserva)\n\n"
+
+        "<b>¿Qué es RIR?</b>\n"
+        "Reps In Reserve — cuántas reps te sobraban\n"
+        "RIR 0 = lo diste todo\n"
+        "RIR 2 = podías hacer 2 más pero paraste\n"
+        "RIR 3+ = estaba demasiado fácil, sube el peso"
+    )
+    await update.message.reply_text(texto, parse_mode="HTML", reply_markup=ren.MENU_PRINCIPAL)
+
+
 async def cmd_adduser(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Solo el admin.")
@@ -179,9 +211,48 @@ def _grupo_del_dia(user_id: int, semana: int, dia: str) -> str:
 
 # ── COACH CONVERSACIONAL ──────────────────────────────────────────────────────
 
+async def _mostrar_peso_prompt(
+    uid: int, semana: int, dia: str,
+    ej_row: list, idx: int,
+    query=None, update=None,
+) -> None:
+    """Muestra el prompt de peso para el ejercicio idx. Texto mínimo."""
+    fuerza  = [e for e in ej_row if not e["ejercicio_id"].startswith("CAR")]
+    if idx >= len(fuerza):
+        return
+    ex      = fuerza[idx]
+    eid     = ex["ejercicio_id"]
+    ej_obj  = cat.BY_ID.get(eid)
+    nombre  = (ej_obj.nombre if ej_obj else ex["ejercicio"])[:32]
+    ultimo  = db.get_ultimo_peso(uid, eid)
+    sug     = db.get_peso_sugerido(uid, eid)
+
+    if ultimo and ultimo.get("peso_lbs"):
+        prev = f"{ultimo['peso_lbs']:g}"
+        hint = f"Última: {prev} lbs"
+        if sug and sug != prev:
+            hint += f"  →  hoy: {sug} lbs"
+    else:
+        hint = "Primera vez"
+
+    texto = (
+        f"<b>{idx+1}/{len(fuerza)}  {nombre}</b>\n"
+        f"{ex['series']}×{ex['reps']}\n"
+        f"<i>{hint}</i>\n\n"
+        "¿Cuántas lbs?  (0 = saltar)"
+    )
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("Saltar resto", callback_data=f"skip_pesos:{semana}:{dia}")
+    ]])
+    if query:
+        await query.edit_message_text(texto, parse_mode="HTML", reply_markup=kb)
+    elif update:
+        await update.message.reply_text(texto, parse_mode="HTML", reply_markup=kb)
+
+
 async def _post_pesos(uid: int, semana: int, dia: str, query, context) -> None:
-    """Llamado cuando terminan de registrar pesos — arranca flujo RIR."""
-    context.user_data.pop("peso_flow", None)
+    """Post registro de pesos — una sola pregunta que captura todo."""
+    db.clear_peso_flow(uid)
     resultado_gam = gam.procesar_fin_sesion(
         user_id   = uid,
         semana    = semana,
@@ -190,9 +261,16 @@ async def _post_pesos(uid: int, semana: int, dia: str, query, context) -> None:
         grupo     = _grupo_del_dia(uid, semana, dia),
     )
     msg_wow = ren.msg_fin_sesion(resultado_gam)
+    # Una sola pregunta: combina RIR + fatiga en 4 opciones claras
+    teclado = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔥 Intenso — sin reserva",   callback_data=f"sesion:{semana}:{dia}:0:5")],
+        [InlineKeyboardButton("💪 Bien — quedaban 1-2 reps", callback_data=f"sesion:{semana}:{dia}:2:3")],
+        [InlineKeyboardButton("😌 Fácil — podía más",       callback_data=f"sesion:{semana}:{dia}:3:2")],
+        [InlineKeyboardButton("😓 Muy cansado hoy",         callback_data=f"sesion:{semana}:{dia}:2:4")],
+    ])
     await query.edit_message_text(
-        msg_wow + "\n\n<b>¿Cuántas reps te sobraban al terminar?</b>\n<i>RIR = Reps In Reserve</i>",
-        reply_markup=ren.kb_rir(semana, dia),
+        msg_wow + "\n\n<b>¿Cómo estuvo la sesión?</b>",
+        reply_markup=teclado,
         parse_mode="HTML",
     )
 
@@ -204,68 +282,45 @@ async def handler_texto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     texto   = update.message.text.strip()
 
     # ── FLUJO DE REGISTRO DE PESOS ──────────────────────────────────────────
-    peso_flow = context.user_data.get("peso_flow")
-    if peso_flow:
-        semana = peso_flow["semana"]
-        dia    = peso_flow["dia"]
-        ejs    = peso_flow["ejercicios"]
-        idx    = peso_flow["idx"]
+    flow = db.get_peso_flow(uid)
+    if flow:
+        semana = flow["semana"]
+        dia    = flow["dia"]
+        ejs    = flow["ejercicios"]
+        idx    = flow["idx"]
         eid    = ejs[idx]
 
-        # Parsear peso
         try:
-            peso_val = float(texto.replace(",", "."))
-            peso_val = None if peso_val == 0 else peso_val
+            val = float(texto.replace(",", "."))
+            val = None if val == 0 else val
         except ValueError:
-            await update.message.reply_text(
-                "Escribe solo el número en kg. Ejemplo: 80 o 22.5\nEscribe 0 para saltar este ejercicio."
-            )
-            return
+            # Palabras clave para saltar
+            if any(w in texto.lower() for w in ["saltar","skip","no","0","paso","omitir","s"]):
+                val = None
+            else:
+                await update.message.reply_text("Solo el número. Ej: 135  —  escribe 0 para saltar.")
+                return
 
-        # Guardar
-        ej_row = db.get_ejercicios_dia(uid, semana, dia)
+        ej_row  = db.get_ejercicios_dia(uid, semana, dia)
         ej_data = next((e for e in ej_row if e["ejercicio_id"] == eid), None)
-        db.save_peso(
-            uid, eid, semana, dia,
-            peso_kg = peso_val,
-            series  = ej_data["series"] if ej_data else None,
-            reps    = ej_data["reps"]   if ej_data else None,
-        )
+        db.save_peso(uid, eid, semana, dia,
+                     peso_lbs = val,
+                     series   = ej_data["series"] if ej_data else None,
+                     reps     = ej_data["reps"]   if ej_data else None)
 
         idx += 1
         if idx >= len(ejs):
-            # Terminaron todos los pesos
-            context.user_data.pop("peso_flow", None)
-            class FakeQuery:
-                message = update.message
+            db.clear_peso_flow(uid)
+            class FQ:
+                message   = update.message
                 from_user = update.effective_user
                 async def edit_message_text(self, *a, **kw):
                     await update.message.reply_text(*a, **kw)
                 async def answer(self): pass
-            await _post_pesos(uid, semana, dia, FakeQuery(), context)
+            await _post_pesos(uid, semana, dia, FQ(), context)
         else:
-            # Siguiente ejercicio
-            peso_flow["idx"] = idx
-            context.user_data["peso_flow"] = peso_flow
-            eid_next = ejs[idx]
-            ej_obj   = cat.BY_ID.get(eid_next)
-            nombre   = ej_obj.nombre if ej_obj else eid_next
-            ej_data2 = next((e for e in ej_row if e["ejercicio_id"] == eid_next), None)
-            ultimo   = db.get_ultimo_peso(uid, eid_next)
-            hint     = f"\nÚltima vez: {ultimo['peso_kg']:g}kg" if ultimo and ultimo.get("peso_kg") else ""
-            peso_sug = db.get_peso_sugerido(uid, eid_next)
-            sug_str  = f" → intenta {peso_sug}kg hoy" if peso_sug else ""
-            await update.message.reply_text(
-                f"<b>Registrar pesos</b> ({idx+1}/{len(ejs)})\n\n"
-                f"<b>{nombre}</b>\n"
-                f"{ej_data2['series'] if ej_data2 else '?'} × {ej_data2['reps'] if ej_data2 else '?'} reps"
-                f"{hint}{sug_str}\n\n"
-                "¿Cuánto peso usaste? (0 para saltar)",
-                parse_mode="HTML",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("Saltar resto", callback_data=f"skip_pesos:{semana}:{dia}")
-                ]])
-            )
+            db.save_peso_flow(uid, semana, dia, ejs, idx)
+            await _mostrar_peso_prompt(uid, semana, dia, ej_row, idx, None, update)
         return
     # ── FIN FLUJO PESOS ─────────────────────────────────────────────────────
 
@@ -438,16 +493,9 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
         if accion == "hoy":
             semana, dia = db.get_estado(uid)
-            stats  = db.get_stats(uid)
-            racha  = gam.get_racha(uid)
-            nivel  = gam.get_nivel(gam.get_xp(uid))
-            header = (
-                f"⚡ {nivel}  ·  🔥 {p.barra_racha(racha)}  ·  "
-                f"💪 {stats['rutinas_completas']} rutinas\n\n"
-            )
             texto, teclado = ren.rutina_html(uid, semana, dia)
             await query.edit_message_text(
-                header + texto, reply_markup=teclado,
+                texto, reply_markup=teclado,
                 parse_mode="HTML", disable_web_page_preview=True,
             )
 
@@ -570,7 +618,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         db.upsert_perfil(uid, ambiente_preferido=ambiente)
         amb_desc = {"gym": "gimnasio 🏋️", "home": "casa 🏠", "band": "banda elástica 🦺"}.get(ambiente, ambiente)
         await query.edit_message_text(
-            f"<b>5 de 6</b> — ¿Cuántos días por semana?\n\n"
+            f"<b>6/6</b> — ¿Días por semana?"
             f"<i>Plan para {amb_desc}</i>",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("3️⃣ 3 días", callback_data="dias:3")],
@@ -673,17 +721,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         return
 
-    # ── CHECK / UNCHECK ───────────────────────────────────────────────────────
-    if data.startswith("chk:"):
-        await query.answer()
-        _, eid, sem_s, dia = data.split(":")
-        sem = int(sem_s)
-        db.toggle_ejercicio(uid, sem, dia, eid)
-        texto, teclado = ren.rutina_html(uid, sem, dia)
-        await query.edit_message_text(
-            texto, reply_markup=teclado, parse_mode="HTML", disable_web_page_preview=True,
-        )
-        return
+    # checkboxes removed — finish marks all at once
 
     # ── SWAP ──────────────────────────────────────────────────────────────────
     if data.startswith("swp_ask:"):
@@ -755,33 +793,13 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 "UPDATE rutinas SET completado=1 WHERE user_id=? AND semana=? AND dia=?",
                 (uid, sem, dia),
             )
-        # Arrancar el flujo de registro de pesos
+        # Arrancar flujo de registro de pesos
         ejercicios = db.get_ejercicios_dia(uid, sem, dia)
-        fuerza = [e for e in ejercicios if not e["ejercicio_id"].startswith("CAR")]
+        fuerza     = [e for e in ejercicios if not e["ejercicio_id"].startswith("CAR")]
         if fuerza:
-            primer = fuerza[0]
-            eid    = primer["ejercicio_id"]
-            ej_obj = cat.BY_ID.get(eid)
-            nombre = ej_obj.nombre if ej_obj else primer["ejercicio"]
-            ultimo = db.get_ultimo_peso(uid, eid)
-            hint   = f"\nÚltima vez: {ultimo['peso_kg']:g}kg" if ultimo and ultimo.get("peso_kg") else ""
-            await query.edit_message_text(
-                f"<b>Registrar pesos</b> (1/{len(fuerza)})\n\n"
-                f"<b>{nombre}</b>\n"
-                f"{primer['series']} × {primer['reps']} reps{hint}\n\n"
-                "¿Cuánto peso usaste? Escribe el número en kg\n"
-                "<i>Ejemplo: 80 o 22.5 — escribe 0 para saltar</i>",
-                parse_mode="HTML",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("Saltar todos los pesos", callback_data=f"skip_pesos:{sem}:{dia}")
-                ]])
-            )
-            # Guardar estado: esperando peso para ejercicio N
-            context.user_data["peso_flow"] = {
-                "semana": sem, "dia": dia,
-                "ejercicios": [e["ejercicio_id"] for e in fuerza],
-                "idx": 0,
-            }
+            ids = [e["ejercicio_id"] for e in fuerza]
+            db.save_peso_flow(uid, sem, dia, ids, 0)
+            await _mostrar_peso_prompt(uid, sem, dia, fuerza, 0, query=query)
         else:
             await _post_pesos(uid, sem, dia, query, context)
         return
@@ -789,7 +807,49 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if data.startswith("skip_pesos:"):
         await query.answer()
         _, sem_s, dia = data.split(":")
+        db.clear_peso_flow(uid)
         await _post_pesos(uid, int(sem_s), dia, query, context)
+        return
+
+    if data.startswith("sesion:"):
+        # sesion:{semana}:{dia}:{rir}:{fatiga}
+        await query.answer()
+        parts  = data.split(":")
+        sem, dia_s, rir_s, fat_s = int(parts[1]), parts[2], int(parts[3]), int(parts[4])
+
+        db.save_progreso_sesion(uid, sem, dia_s, rir=rir_s, progresion="si", fatiga=fat_s)
+
+        import science as sci
+        resultado_sci = sci.analizar_sesion(uid, sem, dia_s)
+        sci.aplicar_ajuste(uid, sem, dia_s, resultado_sci.ajuste)
+
+        # Avanzar al siguiente día automáticamente
+        max_sem  = db.fetchone("SELECT MAX(semana) as n FROM rutinas WHERE user_id=?", (uid,))
+        max_s    = (max_sem["n"] or 4) if max_sem else 4
+        nueva_sem, nuevo_dia = db.avanzar_dia(uid, sem, dia_s, max_semana=max_s)
+        db.upsert_estado(uid, nueva_sem, nuevo_dia)
+
+        if nueva_sem > sem:
+            try:
+                sci.aplicar_prioridad_muscular(uid, nueva_sem)
+            except Exception as e:
+                logger.warning("Prioridad muscular: %s", e)
+
+        # Mensaje corto de cierre
+        msgs_cierre = {
+            "🔥 Intenso":  "Descansa bien. El músculo crece en recuperación.",
+            "💪 Bien":     "Perfecto. Progresión registrada.",
+            "😌 Fácil":    "Sube el peso la próxima vez.",
+            "😓 Cansado":  "Reduzco el volumen de tu próxima sesión.",
+        }
+        nota_sci = resultado_sci.msg_usuario if resultado_sci.msg_usuario else ""
+        cierre   = f"✅ Sesión guardada.\n{nota_sci}" if nota_sci else "✅ Sesión guardada."
+
+        await query.edit_message_text(
+            cierre,
+            reply_markup=ren.MENU_PRINCIPAL,
+            parse_mode="HTML",
+        )
         return
 
     if data.startswith("rec:"):
@@ -802,9 +862,30 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if hora_str else
             "Sin recordatorio."
         )
+        # Primero: confirmación plan
         await query.edit_message_text(
-            msg + "\n\nToca <b>Rutina de hoy</b> para empezar. 👇",
+            msg + "\n\nToca <b>Rutina de hoy</b> para empezar.",
             reply_markup=ren.MENU_PRINCIPAL, parse_mode="HTML",
+        )
+        # Segundo: tutorial de uso (solo la primera vez)
+        tutorial = (
+            "📖 <b>Cómo funciona</b>\n\n"
+            "1️⃣ Abre la rutina del día\n"
+            "2️⃣ Entrena todos los ejercicios\n"
+            "3️⃣ Toca <b>✅ Terminé</b> cuando acabes\n"
+            "4️⃣ Registra cuántas lbs usaste en cada ejercicio\n"
+            "   → La siguiente semana el bot te dice cuánto subir\n\n"
+            "🔄 <b>¿No te gusta un ejercicio?</b>\n"
+            "Toca el botón 🔄 al lado para cambiarlo\n\n"
+            "❓ <b>¿Qué es RIR?</b>\n"
+            "Reps que te sobraban al terminar el último set\n"
+            "RIR 2 = podías hacer 2 más pero paraste\n\n"
+            "/help para ver esto de nuevo"
+        )
+        await context.bot.send_message(
+            chat_id = query.message.chat_id,
+            text    = tutorial,
+            parse_mode = "HTML",
         )
         return
 
@@ -835,6 +916,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("start",      cmd_start))
+    app.add_handler(CommandHandler("help",       cmd_help))
     app.add_handler(CommandHandler("menu",       cmd_menu))
     app.add_handler(CommandHandler("plan",       cmd_plan))
     app.add_handler(CommandHandler("stats",      cmd_stats))
