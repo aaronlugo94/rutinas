@@ -272,30 +272,27 @@ def _contar_progresiones(user_id: int) -> int:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def generar_resumen_semanal(user_id: int, semana: int) -> str:
-    perfil  = db.get_perfil(user_id)
-    nombre  = perfil.get("nombre", "")
-    genero  = perfil.get("genero", "mujer")
+    perfil   = db.get_perfil(user_id)
+    nombre   = perfil.get("nombre", "")
+    genero   = perfil.get("genero", "mujer")
     objetivo = perfil.get("objetivo", "general")
 
-    dias  = db.get_dias_semana(user_id, semana)
+    dias          = db.get_dias_semana(user_id, semana)
     completadas   = sum(1 for d in dias if db.rutina_completa(user_id, semana, d))
     programadas   = len(dias)
     racha         = get_racha(user_id)
     xp_total      = get_xp(user_id)
     nivel         = get_nivel(xp_total)
-    stats         = db.get_stats(user_id)
     progresiones  = _contar_progresiones_semana(user_id, semana)
     badges_user   = get_badges(user_id)
 
-    # Fatiga promedio de la semana
     rows_fatiga = db.fetchall(
         "SELECT fatiga_reportada FROM progreso WHERE user_id=? AND semana=? AND fatiga_reportada IS NOT NULL",
         (user_id, semana)
     )
-    fatigas = [int(r["fatiga_reportada"]) for r in rows_fatiga]
+    fatigas     = [int(r["fatiga_reportada"]) for r in rows_fatiga]
     fatiga_prom = sum(fatigas) / len(fatigas) if fatigas else 2.5
 
-    # Grupo principal de la semana
     row_grupo = db.fetchone(
         "SELECT grupo, COUNT(*) as n FROM rutinas WHERE user_id=? AND semana=? "
         "GROUP BY grupo ORDER BY n DESC LIMIT 1",
@@ -303,42 +300,43 @@ def generar_resumen_semanal(user_id: int, semana: int) -> str:
     )
     grupo_principal = row_grupo["grupo"] if row_grupo else objetivo
 
-    msg_base = p.resumen_semanal(
-        semana            = semana,
+    msg = p.resumen_semanal(
+        semana              = semana,
         rutinas_completadas = completadas,
         rutinas_programadas = programadas,
-        racha             = racha,
-        progresiones      = progresiones,
-        grupo_principal   = grupo_principal,
-        genero            = genero,
-        nombre            = nombre,
-        fatiga_promedio   = fatiga_prom,
+        racha               = racha,
+        progresiones        = progresiones,
+        grupo_principal     = grupo_principal,
+        genero              = genero,
+        nombre              = nombre,
+        fatiga_promedio     = fatiga_prom,
     )
 
-    # XP y nivel
-    _, xp_en_nivel, xp_para_nivel = get_siguiente_nivel(xp_total)
-    barra_xp = p.barra_progreso(xp_en_nivel, xp_para_nivel, ancho=10)
+    # Progresiones con datos reales de peso — el diferenciador real
+    progs_peso = db.get_progresiones_con_peso(user_id, semana)
+    if progs_peso:
+        msg += "\n\n<b>Progresiones esta semana:</b>\n"
+        for pr in progs_peso[:5]:
+            nomb   = pr["ejercicio"][:30]
+            actual = f"{pr['peso_actual']:g}kg"
+            if pr.get("peso_anterior"):
+                prev = f"{pr['peso_anterior']:g}kg"
+                diff = pr["peso_actual"] - pr["peso_anterior"]
+                msg += f"  {nomb}: {prev} → {actual} (+{diff:g}kg)\n"
+            else:
+                msg += f"  {nomb}: {actual} (primer registro)\n"
 
-    xp_block = (
-        f"\n"
-        f"⚡ <b>{nivel}</b>\n"
-        f"   {barra_xp}\n"
-        f"   <i>{xp_total} XP totales</i>"
-    )
+    # XP
+    _, xp_en, xp_para = get_siguiente_nivel(xp_total)
+    msg += f"\n\n<b>{nivel}</b>\n{p.barra_progreso(xp_en, xp_para)}\n<i>{xp_total} XP</i>"
 
     # Badges
-    badge_block = ""
     if badges_user:
-        last_badges = badges_user[-3:]
-        badge_lines = [p.badge_html(k) for k in last_badges if k in p.BADGES]
+        badge_lines = [p.badge_html(k) for k in badges_user[-3:] if k in p.BADGES]
         if badge_lines:
-            badge_block = (
-                f"\n\n🏅 <b>Tus últimos badges:</b>\n"
-                + "\n".join(badge_lines)
-            )
+            msg += "\n\nLogros: " + "  ".join(badge_lines)
 
-    return msg_base + xp_block + badge_block
-
+    return msg
 
 def _contar_progresiones_semana(user_id: int, semana: int) -> int:
     row = db.fetchone(
