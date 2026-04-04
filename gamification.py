@@ -318,11 +318,11 @@ def generar_resumen_semanal(user_id: int, semana: int) -> str:
         msg += "\n\n<b>Progresiones esta semana:</b>\n"
         for pr in progs_peso[:5]:
             nomb   = pr["ejercicio"][:30]
-            actual = f"{pr['peso_actual']:g}kg"
+            actual = f"{pr['peso_actual']:g} lbs"
             if pr.get("peso_anterior"):
-                prev = f"{pr['peso_anterior']:g}kg"
+                prev = f"{pr['peso_anterior']:g} lbs"
                 diff = pr["peso_actual"] - pr["peso_anterior"]
-                msg += f"  {nomb}: {prev} → {actual} (+{diff:g}kg)\n"
+                msg += f"  {nomb}: {prev} → {actual} (+{diff:g} lbs)\n"
             else:
                 msg += f"  {nomb}: {actual} (primer registro)\n"
 
