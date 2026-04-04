@@ -22,12 +22,25 @@ def safe(text: str) -> str:
 
 def _estimar_duracion(ejercicios: list[dict]) -> int:
     minutos = 10
+    from catalog import COMPUESTOS
     for e in ejercicios:
-        try:
-            series = int(e.get("series", 3))
-        except (TypeError, ValueError):
-            series = 3
-        minutos += 22 if e.get("ejercicio_id", "").startswith("CAR") else series * 3
+        eid = e.get("ejercicio_id", "")
+        if eid.startswith("CAR"):
+            # Cardio: leer duración real del campo reps
+            reps_str = str(e.get("reps", "20min"))
+            try:
+                minutos += int("".join(filter(str.isdigit, reps_str)))
+            except (ValueError, TypeError):
+                minutos += 20
+        else:
+            try:
+                series = int(e.get("series", 3))
+            except (TypeError, ValueError):
+                series = 3
+            patron = e.get("patron", "")
+            # Compuestos: ~2.5 min/serie (set + descanso)
+            # Accesorios: ~2 min/serie
+            minutos += series * (3 if patron in COMPUESTOS else 2)
     return minutos
 
 
@@ -101,7 +114,6 @@ def rutina_html(user_id: int, semana: int, dia: str) -> tuple[str, InlineKeyboar
     msg = (
         f"<b>S{semana} · {dia.capitalize()}</b>  {amb_tag}  ~{dur} min\n"
         f"{tipo_str}"
-        f"Racha {p.barra_racha(racha)} · {nivel}\n\n"
     )
 
     # CALENTAMIENTO
@@ -116,20 +128,13 @@ def rutina_html(user_id: int, semana: int, dia: str) -> tuple[str, InlineKeyboar
     msg += "<b>Ejercicios</b>\n"
 
     keyboard  = []
-    hechos    = 0
 
     for idx, ex in enumerate(ejercicios, 1):
         eid       = ex["ejercicio_id"]
         ej        = cat.BY_ID.get(eid)
         es_cardio = ej.es_cardio() if ej else eid.startswith("CAR")
-        hecho     = bool(ex["completado"])
-        if hecho:
-            hechos += 1
-
-        check = "✅" if hecho else "⬜"
-        nex   = safe(ex["ejercicio"])
-
-        msg += f"\n{check} <b>{idx}. {nex}</b>\n"
+        nex = safe(ex["ejercicio"])
+        msg += f"\n<b>{idx}. {nex}</b>\n"
 
         if es_cardio:
             t = ex["reps"] if "min" in str(ex["reps"]) else "20min"
@@ -150,33 +155,22 @@ def rutina_html(user_id: int, semana: int, dia: str) -> tuple[str, InlineKeyboar
                 msg += f"   <i>{safe(ex['notas'])}</i>\n"
 
         if not es_cardio:
+            # Solo botón de swap — los checks ya no son necesarios
             keyboard.append([
                 InlineKeyboardButton(
-                    f"{check} {nex[:30]}",
-                    callback_data=f"chk:{eid}:{semana}:{dia}",
-                ),
-                InlineKeyboardButton("🔄", callback_data=f"swp_ask:{eid}:{semana}:{dia}"),
-            ])
-        else:
-            keyboard.append([
-                InlineKeyboardButton(
-                    f"{check} {safe(ex['ejercicio'])[:32]}",
-                    callback_data=f"chk:{eid}:{semana}:{dia}",
+                    f"🔄 Cambiar {nex[:25]}",
+                    callback_data=f"swp_ask:{eid}:{semana}:{dia}",
                 ),
             ])
 
-    # BARRA DE PROGRESO SESIÓN
-    msg += f"\n{p.barra_progreso(hechos, len(ejercicios))}\n"
 
-    # NUTRICIÓN
-    obj_key = "gluteo" if grupo_dia == "gluteo" else ("peso" if "peso" in grupo_dia else "general")
-    nutr    = cat.NUTRICION.get(obj_key, cat.NUTRICION["general"])
-    msg += f"\n{nutr['pre']}\n{nutr['post']}\n"
+
+
 
     keyboard += [
-        [InlineKeyboardButton("📋 Plan completo",         callback_data=f"plan:{semana}")],
-        [InlineKeyboardButton("📊 Mi progreso",           callback_data="ver_stats")],
-        [InlineKeyboardButton("✅ Terminé — registrar pesos", callback_data=f"finish:{semana}:{dia}")],
+        [InlineKeyboardButton("✅ Terminé",   callback_data=f"finish:{semana}:{dia}"),
+         InlineKeyboardButton("📊 Stats",     callback_data="ver_stats"),
+         InlineKeyboardButton("📋 Plan",      callback_data=f"plan:{semana}")],
     ]
 
     return msg, InlineKeyboardMarkup(keyboard)
@@ -326,10 +320,9 @@ def kb_fatiga(semana: int, dia: str, incluir_saltar: bool = False) -> InlineKeyb
 
 
 MENU_PRINCIPAL = InlineKeyboardMarkup([
-    [InlineKeyboardButton("💪 Rutina de hoy",          callback_data="menu:hoy")],
-    [InlineKeyboardButton("📊 Mi progreso y badges",   callback_data="ver_stats")],
-    [InlineKeyboardButton("📈 Resumen de la semana",   callback_data="ver_resumen")],
-    [InlineKeyboardButton("📅 Plan completo",          callback_data="menu:plan")],
-    [InlineKeyboardButton("😴 Estoy muy cansado",      callback_data="ver_fatiga")],
-    [InlineKeyboardButton("🆕 Nuevo plan",             callback_data="menu:nuevo")],
+    [InlineKeyboardButton("💪 Rutina de hoy",    callback_data="menu:hoy")],
+    [InlineKeyboardButton("📊 Stats",            callback_data="ver_stats"),
+     InlineKeyboardButton("📈 Semana",           callback_data="ver_resumen")],
+    [InlineKeyboardButton("😴 Muy cansado",      callback_data="ver_fatiga"),
+     InlineKeyboardButton("🆕 Nuevo plan",       callback_data="menu:nuevo")],
 ])
