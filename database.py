@@ -61,8 +61,25 @@ def init_db() -> None:
         dias INTEGER DEFAULT 3,
         duracion_min INTEGER DEFAULT 60,
         ambiente_preferido TEXT DEFAULT 'gym',
+        hora_recordatorio TEXT DEFAULT NULL,
+        anos_entrenando INTEGER DEFAULT 0,
         creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS pesos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        ejercicio_id TEXT NOT NULL,
+        semana INTEGER NOT NULL,
+        dia TEXT NOT NULL,
+        peso_kg REAL,
+        series_hechas INTEGER,
+        reps_hechas TEXT,
+        fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_pesos_user_ej
+        ON pesos(user_id, ejercicio_id, fecha DESC);
 
     CREATE TABLE IF NOT EXISTS estado (
         user_id INTEGER PRIMARY KEY,
@@ -187,6 +204,7 @@ def upsert_perfil(user_id: int, **kwargs) -> None:
     cols  = [k for k in kwargs if k in (
         "nombre","genero","nivel","objetivo","limitaciones",
         "dias","duracion_min","ambiente_preferido",
+        "hora_recordatorio","anos_entrenando",
     )]
     if not cols:
         return
@@ -403,6 +421,103 @@ def get_stats(user_id: int) -> dict:
     }
 
 
+
+# ─── REGISTRO DE PESOS ────────────────────────────────────────────────────────
+
+def save_peso(user_id: int, ejercicio_id: str, semana: int, dia: str,
+              peso_kg: float | None, series: int | None = None,
+              reps: str | None = None) -> None:
+    execute("""
+        INSERT INTO pesos (user_id, ejercicio_id, semana, dia, peso_kg, series_hechas, reps_hechas)
+        VALUES (?,?,?,?,?,?,?)
+    """, (user_id, ejercicio_id, semana, dia, peso_kg, series, reps))
+
+
+def get_ultimo_peso(user_id: int, ejercicio_id: str) -> dict | None:
+    row = fetchone("""
+        SELECT peso_kg, series_hechas, reps_hechas, semana, dia, fecha
+        FROM pesos
+        WHERE user_id=? AND ejercicio_id=?
+        ORDER BY fecha DESC LIMIT 1
+    """, (user_id, ejercicio_id))
+    return dict(row) if row else None
+
+
+def get_historial_peso(user_id: int, ejercicio_id: str, limit: int = 8) -> list[dict]:
+    rows = fetchall("""
+        SELECT peso_kg, series_hechas, reps_hechas, semana, fecha
+        FROM pesos
+        WHERE user_id=? AND ejercicio_id=?
+        ORDER BY fecha DESC LIMIT ?
+    """, (user_id, ejercicio_id, limit))
+    return [dict(r) for r in rows]
+
+
+def get_peso_sugerido(user_id: int, ejercicio_id: str) -> str:
+    """
+    Calcula el peso sugerido para la próxima sesión.
+    Regla: si RIR reportado >= 2 la semana pasada, sube 2.5-5%.
+    Si no hay historial, devuelve string vacío.
+    """
+    ultimo = get_ultimo_peso(user_id, ejercicio_id)
+    if not ultimo or not ultimo["peso_kg"]:
+        return ""
+    peso = float(ultimo["peso_kg"])
+
+    # Buscar RIR de esa sesión
+    row_rir = fetchone("""
+        SELECT rir_reportado FROM progreso
+        WHERE user_id=? AND semana=? AND dia=?
+        ORDER BY id DESC LIMIT 1
+    """, (user_id, ultimo["semana"], ultimo["dia"]))
+    rir = row_rir["rir_reportado"] if row_rir and row_rir["rir_reportado"] is not None else 2
+
+    if rir >= 3:
+        # Demasiado fácil — sube más
+        nuevo = round(peso * 1.05 / 2.5) * 2.5
+    elif rir <= 1:
+        # Muy difícil — mantén o sube poco
+        nuevo = round(peso * 1.025 / 2.5) * 2.5
+    else:
+        # RIR 2 — progresión estándar
+        nuevo = round(peso * 1.025 / 2.5) * 2.5
+
+    nuevo = max(nuevo, peso)  # nunca bajar sugerencia
+    return f"{nuevo:.1f}".rstrip("0").rstrip(".")
+
+
+def get_usuarios_con_recordatorio(hora: str) -> list[int]:
+    """Retorna user_ids con hora_recordatorio == hora (formato 'HH:MM')."""
+    rows = fetchall("""
+        SELECT u.user_id FROM usuarios u
+        JOIN allowed_users a ON a.user_id = u.user_id
+        WHERE u.hora_recordatorio = ? AND a.activo = 1
+    """, (hora,))
+    return [r["user_id"] for r in rows]
+
+
+def get_progresiones_con_peso(user_id: int, semana: int) -> list[dict]:
+    """
+    Retorna ejercicios donde subió el peso vs semana anterior.
+    Para el resumen semanal con datos reales.
+    """
+    rows = fetchall("""
+        SELECT p.ejercicio_id, r.ejercicio,
+               p.peso_kg as peso_actual, p.semana,
+               prev.peso_kg as peso_anterior
+        FROM pesos p
+        JOIN rutinas r ON r.user_id = p.user_id AND r.ejercicio_id = p.ejercicio_id
+        LEFT JOIN pesos prev ON prev.user_id = p.user_id
+            AND prev.ejercicio_id = p.ejercicio_id
+            AND prev.semana = p.semana - 1
+        WHERE p.user_id = ? AND p.semana = ?
+            AND p.peso_kg IS NOT NULL
+            AND (prev.peso_kg IS NULL OR p.peso_kg > prev.peso_kg)
+        GROUP BY p.ejercicio_id
+        ORDER BY (p.peso_kg - COALESCE(prev.peso_kg, 0)) DESC
+    """, (user_id, semana))
+    return [dict(r) for r in rows]
+
 # ─── SWAPS ────────────────────────────────────────────────────────────────────
 
 def get_swaps(user_id: int) -> list[dict]:
@@ -442,4 +557,3 @@ def adjust_series(user_id: int, semana: int, dia: str, delta: int, solo_accesori
                 "UPDATE rutinas SET series=? WHERE id=?",
                 (max(2, min(6, int(row["series"] or 3) + delta)), row["id"]),
             )
-
