@@ -451,6 +451,89 @@ _RAW: list[dict] = [
          cue="golpes suaves al aire, 3 min rounds, 1 min descanso, FC zona 2",
          musculo_sec=(), equipo="ninguno"),
 
+
+    # ═══════════════════════════════════════════════
+    # EJERCICIOS CLAVE QUE FALTABAN
+    # Para un programa serio de hipertrofia
+    # ═══════════════════════════════════════════════
+    dict(id="TIR_G10", nombre="Dominadas con lastre",
+         grupo="tiron", rol="principal", patron="jalon_vertical",
+         ambiente=("gym",), emg_score=5, fatiga="alta", nivel_min="avanzado",
+         cue="lastre en cinturón, rango completo, excéntrico 3s controlado",
+         musculo_sec=("biceps", "romboides"), equipo="cinturón de lastre"),
+
+    dict(id="TIR_G11", nombre="Dominadas peso corporal",
+         grupo="tiron", rol="principal", patron="jalon_vertical",
+         ambiente=("gym", "home"), emg_score=5, fatiga="alta", nivel_min="intermedio",
+         cue="agarre supino o prono, pecho al bar, escápulas activas",
+         musculo_sec=("biceps",), equipo="barra de dominadas"),
+
+    dict(id="TIR_G12", nombre="Remo Pendlay con barra",
+         grupo="tiron", rol="principal", patron="remo_horizontal",
+         ambiente=("gym",), emg_score=5, fatiga="alta", nivel_min="avanzado",
+         cue="torso paralelo al suelo, barra arranca del suelo cada rep, explosivo",
+         musculo_sec=("biceps", "lumbar"), equipo=""),
+
+    dict(id="TIR_G13", nombre="Remo con barra supino",
+         grupo="tiron", rol="principal", patron="remo_horizontal",
+         ambiente=("gym",), emg_score=4, fatiga="alta", nivel_min="intermedio",
+         cue="agarre supino más recluta bíceps, codos pegados al cuerpo",
+         musculo_sec=("biceps",), equipo=""),
+
+    dict(id="EMP_G10", nombre="Fondos en paralelas con lastre",
+         grupo="empuje", rol="principal", patron="press_horizontal",
+         ambiente=("gym",), emg_score=5, fatiga="alta", nivel_min="avanzado",
+         cue="torso ligeramente adelante para pecho, rango completo",
+         musculo_sec=("triceps", "hombro_anterior"), equipo="cinturón de lastre"),
+
+    dict(id="EMP_G11", nombre="Fondos en paralelas peso corporal",
+         grupo="empuje", rol="principal", patron="press_horizontal",
+         ambiente=("gym", "home"), emg_score=4, fatiga="alta", nivel_min="intermedio",
+         cue="torso inclinado 20° para pecho, codos afuera controlado",
+         musculo_sec=("triceps",), equipo="paralelas"),
+
+    dict(id="PIE_G11", nombre="Peso muerto convencional con barra",
+         grupo="pierna", rol="principal", patron="bisagra_cadera",
+         ambiente=("gym",), emg_score=5, fatiga="alta", nivel_min="avanzado",
+         cue="barra sobre el mediopié, espalda neutra, empuja el suelo",
+         musculo_sec=("gluteo", "isquiotibial", "lumbar", "core"), equipo=""),
+
+    dict(id="PIE_G12", nombre="Peso muerto rumano con barra",
+         grupo="pierna", rol="principal", patron="bisagra_cadera",
+         ambiente=("gym",), emg_score=5, fatiga="alta", nivel_min="intermedio",
+         cue="barra cerca del cuerpo, bisagra pura, siente el estiramiento isquio",
+         musculo_sec=("gluteo", "isquiotibial", "lumbar"), equipo=""),
+
+    dict(id="PIE_G13", nombre="Sentadilla búlgara con barra",
+         grupo="pierna", rol="principal", patron="desplante_unilateral",
+         ambiente=("gym",), emg_score=5, fatiga="alta", nivel_min="avanzado",
+         cue="barra alta en trapecios, torso 15° adelante, isquio y glúteo",
+         musculo_sec=("gluteo", "core"), equipo=""),
+
+    dict(id="PIE_G14", nombre="Leg press pies altos y anchos",
+         grupo="pierna", rol="secundario", patron="prensa",
+         ambiente=("gym",), emg_score=4, fatiga="media", nivel_min="principiante",
+         cue="pies altos = más glúteo e isquio, rodillas no colapsan",
+         musculo_sec=("gluteo", "isquiotibial"), equipo=""),
+
+    dict(id="EMP_G12", nombre="Press de pecho con barra",
+         grupo="empuje", rol="principal", patron="press_horizontal",
+         ambiente=("gym",), emg_score=5, fatiga="alta", nivel_min="avanzado",
+         cue="agarre 1.5x ancho de hombros, excéntrico 3s, codos 45°",
+         musculo_sec=("triceps", "hombro_anterior"), equipo=""),
+
+    dict(id="EMP_G13", nombre="Press inclinado con barra",
+         grupo="empuje", rol="principal", patron="press_inclinado",
+         ambiente=("gym",), emg_score=5, fatiga="alta", nivel_min="avanzado",
+         cue="banco 30°, mismo patrón que plano, foco porción clavicular",
+         musculo_sec=("triceps", "hombro_anterior"), equipo=""),
+
+    dict(id="EMP_G14", nombre="Press militar con barra de pie",
+         grupo="empuje", rol="principal", patron="press_vertical",
+         ambiente=("gym",), emg_score=5, fatiga="alta", nivel_min="avanzado",
+         cue="core activo, glúteo apretado, empuja sobre la cabeza sin arco lumbar",
+         musculo_sec=("triceps", "trapecio", "core"), equipo=""),
+
     # ═══════════════════════════════════════════════
     # PIERNA — GYM
     # ═══════════════════════════════════════════════
