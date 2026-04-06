@@ -193,12 +193,31 @@ async def cmd_adduser(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 # ── ONBOARDING ─────────────────────────────────────────────────────────────────
 
 async def _onboarding_inicio(update: Update, nombre: str = "") -> None:
-    teclado = InlineKeyboardMarkup([[
-        InlineKeyboardButton("🚀 ¡Quiero mi plan!", callback_data="obj:inicio")
-    ]])
-    await update.message.reply_text(
-        p.BIENVENIDA, reply_markup=teclado, parse_mode="HTML",
+    n = nombre.split()[0] if nombre else ""
+    saludo = f"Hola {n}. " if n else ""
+    texto = (
+        f"<b>GymCoach</b>\n\n"
+        f"{saludo}Plan de entrenamiento basado en ciencia. "
+        f"Se ajusta cada semana según cómo te fue.\n\n"
+
+        "<b>Cómo funciona</b>\n"
+        "1. Abre la rutina del día\n"
+        "2. Entrena todos los ejercicios\n"
+        "3. Toca <b>✅ Terminé</b> al acabar\n"
+        "4. Registra cuántas lbs usaste\n"
+        "   → La siguiente semana el bot te dice cuánto subir\n\n"
+
+        "<b>Botones en la rutina</b>\n"
+        "🔄 — Cambiar ese ejercicio por otro\n"
+        "✅ Terminé — Cerrar la sesión\n"
+        "📊 Stats — Tu progreso\n\n"
+
+        "¿Listo? 6 preguntas y tu plan está listo en segundos."
     )
+    teclado = InlineKeyboardMarkup([[
+        InlineKeyboardButton("💪 Crear mi plan", callback_data="obj:inicio")
+    ]])
+    await update.message.reply_text(texto, reply_markup=teclado, parse_mode="HTML")
 
 
 def _grupo_del_dia(user_id: int, semana: int, dia: str) -> str:
@@ -444,6 +463,68 @@ async def cb_ver_fatiga(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "💬 <b>¿Cómo estás hoy?</b>\n"
         "<i>Esto me ayuda a calibrar tu plan para que siempre sea el nivel correcto.</i>",
         reply_markup=ren.kb_fatiga(semana, dia), parse_mode="HTML",
+    )
+
+
+async def cb_ver_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    texto = (
+        "<b>Cómo usar GymCoach</b>\n\n"
+        "1️⃣ Entrena todos los ejercicios de la rutina\n"
+        "2️⃣ Toca <b>✅ Terminé</b> al acabar\n"
+        "3️⃣ Escribe cuántas lbs usaste en cada ejercicio\n"
+        "   (escribe 0 para saltar uno)\n"
+        "4️⃣ Dinos cómo estuvo la sesión\n\n"
+        "<b>Botones</b>\n"
+        "🔄 — Cambiar ese ejercicio por otro\n"
+        "✅ Terminé — Cerrar la sesión\n"
+        "📊 Stats — Tu progreso\n"
+        "📋 Plan — Ver las 4 semanas\n\n"
+        "<b>¿Qué es RIR?</b>\n"
+        "Reps que te sobraban al terminar el último set\n"
+        "RIR 0 = lo diste todo\n"
+        "RIR 2 = podías hacer 2 más\n"
+        "RIR 3+ = estaba fácil, sube el peso\n\n"
+        "<b>¿Qué pasa si salto un día?</b>\n"
+        "Nada. Vuelve cuando puedas, el plan sigue donde lo dejaste."
+    )
+    await query.edit_message_text(
+        texto, reply_markup=ren.MENU_PRINCIPAL, parse_mode="HTML",
+    )
+
+
+async def cb_ver_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    texto = (
+        "<b>Cómo usar GymCoach</b>\n\n"
+
+        "<b>Flujo básico</b>\n"
+        "1. Toca <b>💪 Rutina de hoy</b>\n"
+        "2. Entrena todos los ejercicios\n"
+        "3. Toca <b>✅ Terminé</b>\n"
+        "4. Escribe cuántas lbs usaste en cada ejercicio\n"
+        "   (escribe 0 para saltar un ejercicio)\n"
+        "5. Dinos cómo estuvo la sesión\n"
+        "→ La semana siguiente el bot te dice cuánto subir\n\n"
+
+        "<b>Botones en la rutina</b>\n"
+        "🔄 — Cambiar ese ejercicio por otro\n"
+        "✅ Terminé — Marca la sesión como completada\n"
+        "📊 Stats — Tu progreso y badges\n"
+        "📋 Plan — Las 4 semanas completas\n\n"
+
+        "<b>¿Qué es RIR?</b>\n"
+        "Reps que te sobraban al terminar el último set\n"
+        "RIR 0 = lo diste todo · RIR 3+ = estaba muy fácil\n\n"
+
+        "<b>¿Quieres un plan nuevo?</b>\n"
+        "Toca 🆕 Nuevo plan en el menú\n"
+        "Tu historial de pesos siempre se conserva"
+    )
+    await query.edit_message_text(
+        texto, reply_markup=ren.MENU_PRINCIPAL, parse_mode="HTML",
     )
 
 
@@ -927,7 +1008,9 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(cb_rir,         pattern="^rir:"))
     app.add_handler(CallbackQueryHandler(cb_progresion,  pattern="^prg:"))
     app.add_handler(CallbackQueryHandler(cb_fatiga,      pattern="^fat:"))
+    app.add_handler(CallbackQueryHandler(cb_ver_ayuda,   pattern="^ver_ayuda$"))
     app.add_handler(CallbackQueryHandler(cb_ver_fatiga,  pattern="^ver_fatiga$"))
+    app.add_handler(CallbackQueryHandler(cb_ver_ayuda,   pattern="^ver_ayuda$"))
     app.add_handler(CallbackQueryHandler(cb_ver_stats,   pattern="^ver_stats$"))
     app.add_handler(CallbackQueryHandler(cb_ver_resumen, pattern="^ver_resumen$"))
     app.add_handler(CallbackQueryHandler(cb_ver_volumen, pattern="^ver_volumen$"))
