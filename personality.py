@@ -17,13 +17,19 @@ import random
 # ONBOARDING
 # ══════════════════════════════════════════════════════════════════════════════
 
-BIENVENIDA = """<b>GymCoach</b>
-
-Rutinas basadas en ciencia, no en YouTube.
-
-El plan se genera según tu objetivo, nivel y dónde entrenas. Se ajusta cada semana según cómo te fue la anterior — si progresaste, sube; si estás agotado/a, baja.
-
-Cinco preguntas y listo."""
+BIENVENIDA = (
+    "<b>GymCoach — Tu coach de gym</b>\n\n"
+    "Plan basado en ciencia. Se ajusta cada semana según cómo te fue.\n\n"
+    "<b>Cómo funciona</b>\n"
+    "1\u20e3 Respondes 6 preguntas rápidas\n"
+    "2\u20e3 El bot genera tu plan de 4 semanas\n"
+    "3\u20e3 Cada día ves tu rutina aquí mismo\n"
+    "4\u20e3 Entrenas y tocas \u2705 Terminé\n"
+    "5\u20e3 Registras cuántas lbs usaste en cada ejercicio\n"
+    "  → La siguiente semana el bot te dice cuánto subir\n\n"
+    "Todo es por botones, no necesitas escribir comandos.\n\n"
+    "¿Listo? 👇"
+)
 
 
 def bienvenida_objetivo(objetivo: str, genero: str = "") -> str:
