@@ -1093,40 +1093,16 @@ ROTACION_ONDULATORIO: dict[int, dict[str, str]] = {
 }
 
 # ─── CALENTAMIENTOS POR GRUPO ─────────────────────────────────────────────────
-# Calentamientos prácticos: 5 min, específicos al movimiento del día.
-# Principio: activación específica > cardio genérico antes de fuerza.
-# Fuente: Behm & Chaouachi (2011) — el estiramiento estático PRE-fuerza reduce rendimiento.
-# Lo que sí funciona: activar el músculo que vas a trabajar con movimiento dinámico ligero.
+# Calentamiento específico por grupo — 1 ejercicio, 2-3 series ligeras.
+# Principio: el mejor calentamiento para press es press ligero (Bishop 2003).
+# Activa el patrón exacto que vas a usar con carga mínima.
 CALENTAMIENTO: dict[str, list[tuple[str, str]]] = {
-    "gluteo": [
-        ("Caminata 3-5 min en cinta al 50% o en sitio",    "Eleva temperatura muscular sin fatiga"),
-        ("Puente de glúteo sin peso — 2×15 con pausa 2s",  "Activa la conexión mente-músculo antes de cargar"),
-        ("Hip thrust con barra vacía — 1×12",               "Practica el patrón con peso mínimo antes del trabajo real"),
-    ],
-    "pierna": [
-        ("Caminata 3-5 min o bicicleta suave",              "Lubrica rodillas y caderas antes de cargar"),
-        ("Sentadilla sin peso — 2×10 lentas",               "Activa el patrón motor, revisa rango de movimiento"),
-        ("Peso muerto con barra vacía — 1×10",              "Calienta isquios y glúteo con el movimiento exacto"),
-    ],
-    "empuje": [
-        ("Círculos de hombro hacia adelante y atrás — 2×10", "Lubrica la articulación glenohumeral"),
-        ("Flexiones lentas sin peso — 2×8",                  "Activa el patrón del press, escápulas retraídas"),
-        ("Press con barra vacía o mancuernas ligeras — 1×12","Practica el movimiento antes de la carga real"),
-    ],
-    "tiron": [
-        ("Círculos de hombro y retracción escapular — 2×15", "Activa romboides y trapecio medio"),
-        ("Jalón con banda o peso mínimo — 2×10",             "Pre-activa el dorsal con el patrón exacto"),
-        ("Remo ligero — 1×12",                               "Calienta con el movimiento real, no uno diferente"),
-    ],
-    "core": [
-        ("Caminata ligera 3 min",                            "Eleva temperatura antes del trabajo de core"),
-        ("Dead bug lento — 2×8 c/lado",                     "Activa el transverso abdominal profundo"),
-        ("Plancha 2×20s",                                    "Establece tensión de core antes de los ejercicios"),
-    ],
-    "cardio": [
-        ("Primeros 3-5 min al 50% de la intensidad objetivo","El cardio se calienta a sí mismo — empieza suave"),
-        ("Movilidad de cadera — 10 círculos c/dirección",    "Opcional si tienes caderas rígidas al despertar"),
-    ],
+    "gluteo":  [("Hip thrust con barra vacía — 2×15", "Activa conexión mente-glúteo antes de cargar")],
+    "pierna":  [("Sentadilla sin peso o con barra vacía — 2×10", "Lubrica rodillas y caderas, activa el patrón")],
+    "empuje":  [("Press con barra vacía o mancuernas muy ligeras — 2×10", "Activa deltoides y pecho, escápulas retraídas")],
+    "tiron":   [("Jalón con banda o jalón al pecho peso mínimo — 2×12", "Activa dorsal, codos hacia bolsillos")],
+    "core":    [("Plancha 2×20s + dead bug 2×8", "Activa transverso antes del trabajo dinámico")],
+    "cardio":  [("2-3 min a 50% de intensidad objetivo", "El cardio se calienta a sí mismo — empieza suave")],
 }
 
 NUTRICION: dict[str, dict[str, str]] = {
