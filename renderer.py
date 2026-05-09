@@ -118,11 +118,10 @@ def rutina_html(user_id: int, semana: int, dia: str) -> tuple[str, InlineKeyboar
 
     # CALENTAMIENTO
     cal_items = cat.CALENTAMIENTO.get(grupo_dia, cat.CALENTAMIENTO.get("cardio", []))
+    cal_items = cat.CALENTAMIENTO.get(grupo_dia, cat.CALENTAMIENTO.get("cardio", []))
     if cal_items:
-        msg += "<b>Calentamiento</b> (5 min)\n"
-        for nc, nota in cal_items:
-            msg += f"  {nc}\n"
-        msg += "\n"
+        nombre_cal, nota_cal = cal_items[0]
+        msg += f"🔥 <b>Calentamiento:</b> {nombre_cal}\n<i>{nota_cal}</i>\n\n"
 
     # EJERCICIOS
     msg += "<b>Ejercicios</b>\n"
@@ -170,20 +169,25 @@ def rutina_html(user_id: int, semana: int, dia: str) -> tuple[str, InlineKeyboar
     keyboard += [
         [InlineKeyboardButton("✅ Terminé",   callback_data=f"finish:{semana}:{dia}"),
          InlineKeyboardButton("📊 Stats",     callback_data="ver_stats"),
-         InlineKeyboardButton("📋 Plan",      callback_data=f"plan:{semana}")],
+         InlineKeyboardButton("📋 Plan",      callback_data=f"plan:{semana}"),
+         InlineKeyboardButton("❓",           callback_data="ver_ayuda")],
     ]
 
     return msg, InlineKeyboardMarkup(keyboard)
 
 
 def _msg_dia_libre(dia: str) -> str:
+    from planner import RECOVERY_OPCIONES
+    opts = "\n".join(
+        f"  {emoji} <b>{nombre}</b>\n    <i>{desc}</i>"
+        for emoji, nombre, desc in [(o[0].split()[0], o[0].split(maxsplit=1)[1], o[1])
+                                     for o in RECOVERY_OPCIONES]
+    )
     return (
-        f"🌿 <b>{dia.capitalize()} — Día de descanso activo</b>\n\n"
-        "El descanso no es opcional. Es donde crece el músculo.\n\n"
-        "✔ Duerme 7-9 horas — ahí ocurre la síntesis proteica\n"
-        "✔ Proteína alta aunque no entrenes (0.7-1g/lb)\n"
-        "✔ Caminata 20-30 min activa la recuperación sin fatiga\n\n"
-        "<i>Tu cuerpo se está volviendo más fuerte hoy. 💚</i>"
+        f"<b>{dia.capitalize()} — Recovery activo</b>\n\n"
+        "El músculo crece hoy. Elige una actividad:\n\n"
+        f"{opts}\n\n"
+        "<i>Proteína alta aunque no entrenes. Duerme 7-9 hrs.</i>"
     )
 
 
@@ -321,8 +325,9 @@ def kb_fatiga(semana: int, dia: str, incluir_saltar: bool = False) -> InlineKeyb
 
 MENU_PRINCIPAL = InlineKeyboardMarkup([
     [InlineKeyboardButton("💪 Rutina de hoy",    callback_data="menu:hoy")],
+    [InlineKeyboardButton("📈 Mi progreso",      callback_data="prog_lista")],
     [InlineKeyboardButton("📊 Stats",            callback_data="ver_stats"),
-     InlineKeyboardButton("📈 Semana",           callback_data="ver_resumen")],
+     InlineKeyboardButton("📅 Semana",           callback_data="ver_resumen")],
     [InlineKeyboardButton("😴 Muy cansado",      callback_data="ver_fatiga"),
      InlineKeyboardButton("🆕 Nuevo plan",       callback_data="menu:nuevo")],
 ])
