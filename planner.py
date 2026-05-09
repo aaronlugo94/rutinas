@@ -30,6 +30,23 @@ from catalog import (
     MAX_POR_PATRON, MAX_POR_PATRON_DEFAULT, COMPUESTOS,
 )
 
+
+# ── RECOVERY ACTIVO ────────────────────────────────────────────────────────────
+# Los días sin gym son recovery activo, no descanso total.
+# El usuario elige qué hacer — el bot le da las opciones.
+RECOVERY_OPCIONES = [
+    ("🧘 Movilidad",  "10-15 min de estiramientos dinámicos. Caderas, hombros, columna."),
+    ("🚶 Caminata",   "20-30 min caminata a ritmo cómodo. Zona 1 — conversación fácil."),
+    ("🚴 Bici suave", "20-30 min bicicleta a intensidad muy baja. FC < 110 bpm."),
+    ("🎯 Core",       "Plancha 3×30s · Dead bug 3×10 · Bird dog 3×10. Sin peso."),
+]
+
+DIAS_SEMANA_ORDEN = ["lunes","martes","miercoles","jueves","viernes","sabado","domingo"]
+
+def get_dias_descanso(dias_entrenamiento: list[str]) -> list[str]:
+    """Retorna los días que no están en el plan de entrenamiento."""
+    return [d for d in DIAS_SEMANA_ORDEN[:7] if d not in dias_entrenamiento]
+
 # ══════════════════════════════════════════════════════════════════════════════
 # SPLITS
 # ══════════════════════════════════════════════════════════════════════════════
