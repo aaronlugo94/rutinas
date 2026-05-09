@@ -529,6 +529,66 @@ def get_progresiones_con_peso(user_id: int, semana: int) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+
+def get_progresion_ejercicio(user_id: int, ejercicio_id: str) -> list[dict]:
+    """
+    Mejor peso por semana para un ejercicio.
+    Usado para mostrar la gráfica de progresión.
+    """
+    rows = fetchall("""
+        SELECT semana,
+               MAX(peso_lbs) as mejor_peso,
+               series_hechas, reps_hechas
+        FROM pesos
+        WHERE user_id=? AND ejercicio_id=? AND peso_lbs IS NOT NULL
+        GROUP BY semana
+        ORDER BY semana ASC
+    """, (user_id, ejercicio_id))
+    return [dict(r) for r in rows]
+
+
+def get_ejercicios_con_historial(user_id: int) -> list[dict]:
+    """
+    Retorna ejercicios que tienen al menos 2 registros de peso.
+    Ordenados por grupo y EMG score.
+    """
+    rows = fetchall("""
+        SELECT p.ejercicio_id,
+               r.ejercicio,
+               r.grupo,
+               COUNT(DISTINCT p.semana) as semanas_registradas,
+               MAX(p.peso_lbs) as peso_maximo,
+               MIN(p.peso_lbs) as peso_minimo
+        FROM pesos p
+        JOIN rutinas r ON r.user_id = p.user_id
+                       AND r.ejercicio_id = p.ejercicio_id
+        WHERE p.user_id=? AND p.peso_lbs IS NOT NULL
+        GROUP BY p.ejercicio_id
+        HAVING COUNT(DISTINCT p.semana) >= 1
+        ORDER BY r.grupo, MAX(p.peso_lbs) DESC
+    """, (user_id,))
+    return [dict(r) for r in rows]
+
+
+def get_resumen_progresion(user_id: int) -> dict:
+    """
+    Resumen global: cuánto subió de peso en cada ejercicio
+    desde el primer registro hasta el último.
+    """
+    rows = fetchall("""
+        SELECT ejercicio_id,
+               MIN(peso_lbs) as primer_peso,
+               MAX(peso_lbs) as ultimo_peso,
+               MAX(semana)   as ultima_semana,
+               MIN(semana)   as primera_semana
+        FROM pesos
+        WHERE user_id=? AND peso_lbs IS NOT NULL
+        GROUP BY ejercicio_id
+        HAVING MAX(semana) > MIN(semana)   -- solo si hay progresión entre semanas
+        ORDER BY (MAX(peso_lbs) - MIN(peso_lbs)) DESC
+    """, (user_id,))
+    return {r["ejercicio_id"]: dict(r) for r in rows}
+
 # ─── ESTADO DE FLUJO DE PESOS (persiste en DB, no en memoria) ─────────────────
 
 def save_peso_flow(user_id: int, semana: int, dia: str,
