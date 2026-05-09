@@ -371,17 +371,31 @@ def stats_completos_html(user_id: int) -> str:
 
     nombre_s = nombre.split()[0] if nombre else "Tú"
 
+    # Streak visual con fuego
+    if racha >= 30:
+        racha_display = f"🔥🔥🔥 <b>{racha} días</b> — élite"
+    elif racha >= 14:
+        racha_display = f"🔥🔥 <b>{racha} días</b>"
+    elif racha >= 7:
+        racha_display = f"🔥 <b>{racha} días</b>"
+    elif racha >= 3:
+        racha_display = f"⚡ <b>{racha} días</b>"
+    elif racha > 0:
+        racha_display = f"{racha} día"
+    else:
+        racha_display = "Sin racha — empieza hoy"
+
     lineas = [
         f"<b>{nombre_s if nombre_s else 'Stats'}</b>",
         "",
+        f"🔥 Racha: {racha_display}",
+        f"🏆 Récord: <b>{racha_max} días</b>",
+        f"💪 Sesiones: <b>{stats['rutinas_completas']}</b>",
+        f"📈 Progresiones: <b>{_contar_progresiones(user_id)}</b>",
+        "",
         f"<b>{nivel}</b>",
         f"{barra_xp}",
-        f"<i>{xp_total} XP · faltan {xp_para_nivel - xp_en_nivel} para {siguiente_nivel}</i>",
-        "",
-        f"Sesiones completadas: <b>{stats['rutinas_completas']}</b>",
-        f"Racha actual: <b>{barra_r}</b>",
-        f"Racha máxima: <b>{racha_max} días</b>",
-        f"Progresiones: <b>{_contar_progresiones(user_id)}</b>",
+        f"<i>{xp_total} XP · {xp_para_nivel - xp_en_nivel} para {siguiente_nivel}</i>",
     ]
 
     if badges_u:
