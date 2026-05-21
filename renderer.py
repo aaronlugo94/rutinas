@@ -167,10 +167,9 @@ def rutina_html(user_id: int, semana: int, dia: str) -> tuple[str, InlineKeyboar
 
 
     keyboard += [
-        [InlineKeyboardButton("✅ Terminé",   callback_data=f"finish:{semana}:{dia}"),
-         InlineKeyboardButton("📊 Stats",     callback_data="ver_stats"),
-         InlineKeyboardButton("📋 Plan",      callback_data=f"plan:{semana}"),
-         InlineKeyboardButton("❓",           callback_data="ver_ayuda")],
+        [InlineKeyboardButton("✅ Terminé",        callback_data=f"finish:{semana}:{dia}"),
+         InlineKeyboardButton("⏭ Saltar día",     callback_data=f"skip_day:{semana}:{dia}"),
+         InlineKeyboardButton("❓",                callback_data="ver_ayuda")],
     ]
 
     return msg, InlineKeyboardMarkup(keyboard)
