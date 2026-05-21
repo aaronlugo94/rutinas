@@ -205,7 +205,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/resumen — Resumen de la semana\n"
         "/plan — Plan completo\n"
         "/reset_plan — Crear nuevo plan\n"
-        "  (tu historial de pesos se conserva)\n\n"
+        "  (tu historial de pesos se conserva)\n"
+        "/setpin 1234 — Configura acceso a la web app\n\n"
 
         "<b>¿Qué es RIR?</b>\n"
         "Reps In Reserve — cuántas reps te sobraban\n"
@@ -214,6 +215,29 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "RIR 3+ = estaba demasiado fácil, sube el peso"
     )
     await update.message.reply_text(texto, parse_mode="HTML", reply_markup=ren.MENU_PRINCIPAL)
+
+
+async def cmd_setpin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Configura el PIN de 4 dígitos para acceder a la web app."""
+    if not await check_auth(update):
+        return
+    uid  = update.effective_user.id
+    args = context.args or []
+    if not args or not args[0].isdigit() or len(args[0]) != 4:
+        await update.message.reply_text(
+            "Uso: /setpin 1234\nEl PIN de 4 dígitos te permite entrar a la web app.\nCámbialo cuando quieras."
+        )
+        return
+    pin = args[0]
+    db.execute("UPDATE usuarios SET pin=? WHERE user_id=?", (pin, uid))
+    await update.message.reply_text(
+        f"✅ PIN configurado.\n\n"
+        f"Entra a la web con:\n"
+        f"  Tu Telegram ID: <code>{uid}</code>\n"
+        f"  Tu PIN: <code>{pin}</code>\n\n"
+        f"<i>Guarda tu ID — lo necesitas para entrar a la web.</i>",
+        parse_mode="HTML",
+    )
 
 
 async def cmd_adduser(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -307,6 +331,38 @@ async def _mostrar_peso_prompt(
         await query.edit_message_text(texto, parse_mode="HTML", reply_markup=kb)
     elif update:
         await update.message.reply_text(texto, parse_mode="HTML", reply_markup=kb)
+
+
+async def _do_skip_day(
+    uid: int, semana: int, dia: str, query, context, save: bool = False
+) -> None:
+    """Salta el día actual y avanza al siguiente."""
+    db.clear_peso_flow(uid)
+    if not save:
+        # Reset completados del día
+        with db.get_db() as conn:
+            conn.execute(
+                "UPDATE rutinas SET completado=0 WHERE user_id=? AND semana=? AND dia=?",
+                (uid, semana, dia),
+            )
+    max_sem = db.fetchone("SELECT MAX(semana) as n FROM rutinas WHERE user_id=?", (uid,))
+    max_s   = (max_sem["n"] or 4) if max_sem else 4
+    nueva_sem, nuevo_dia = db.avanzar_dia(uid, semana, dia, max_semana=max_s)
+    db.upsert_estado(uid, nueva_sem, nuevo_dia)
+    if nueva_sem > semana:
+        try:
+            import science as sci
+            sci.aplicar_prioridad_muscular(uid, nueva_sem)
+        except Exception as e:
+            logger.warning("Prioridad: %s", e)
+    saved_msg = " Lo que hiciste quedó guardado." if save else ""
+    texto, teclado = ren.rutina_html(uid, nueva_sem, nuevo_dia)
+    await query.edit_message_text(
+        f"Día saltado.{saved_msg}\n\n" + texto,
+        reply_markup=teclado,
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
 
 
 async def _post_pesos(uid: int, semana: int, dia: str, query, context) -> None:
@@ -667,26 +723,39 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             )
         else:
             db.upsert_estado(uid, 1, "pendiente", objetivo=objetivo)
-            teclado = InlineKeyboardMarkup([
-                [InlineKeyboardButton("👩 Mujer",  callback_data="gen:mujer")],
-                [InlineKeyboardButton("👨 Hombre", callback_data="gen:hombre")],
-            ])
             await query.edit_message_text(
-                "<b>2 de 6</b> — ¿Eres hombre o mujer?\n"
-                "<i>El plan ajusta split, volumen de glúteo y progresión.</i>",
-                reply_markup=teclado, parse_mode="HTML",
+                "<b>2/6</b> — ¿Género?",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("👩 Mujer",  callback_data="gen:mujer")],
+                    [InlineKeyboardButton("👨 Hombre", callback_data="gen:hombre")],
+                    [InlineKeyboardButton("← Atrás",   callback_data="obj:inicio")],
+                ]),
+                parse_mode="HTML",
             )
         return
 
     if data.startswith("gen:"):
         await query.answer()
-        genero  = data.split(":")[1]
+        genero_val = data.split(":")[1]
+        if genero_val == "back":
+            # Back to objetivo
+            teclado = InlineKeyboardMarkup([
+                [InlineKeyboardButton("💪 Ponerme mamado / hipertrofia", callback_data="obj:mamado")],
+                [InlineKeyboardButton("🍑 Glúteo y pierna",              callback_data="obj:gluteo")],
+                [InlineKeyboardButton("🔥 Perder grasa",                 callback_data="obj:peso")],
+                [InlineKeyboardButton("⚡ Cuerpo completo / general",    callback_data="obj:general")],
+            ])
+            await query.edit_message_text(
+                "<b>1/6</b> — Objetivo", reply_markup=teclado, parse_mode="HTML",
+            )
+            return
+        genero  = genero_val
         db.upsert_perfil(uid, genero=genero)
         row_obj = db.fetchone("SELECT objetivo FROM estado WHERE user_id=?", (uid,))
         objetivo = row_obj["objetivo"] if row_obj else "general"
         await query.edit_message_text(
             p.bienvenida_objetivo(objetivo, genero) +
-            "\n\n<b>3 de 6 — ¿Cuánto tiempo llevas entrenando con pesas?</b>\n\n"
+            "\n\n<b>3/6 — ¿Cuánto tiempo llevas entrenando con pesas?</b>\n\n"
             "🌱 <b>Menos de 1 año</b> — empiezas de cero o llevas poco tiempo\n"
             "💪 <b>1 a 3 años</b> — ya haces sentadilla y peso muerto con forma\n"
             "🔥 <b>Más de 3 años</b> — entrenas con barra libre regularmente",
@@ -694,6 +763,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 [InlineKeyboardButton("🌱 Menos de 1 año", callback_data="niv:principiante")],
                 [InlineKeyboardButton("💪 1 a 3 años",     callback_data="niv:intermedio")],
                 [InlineKeyboardButton("🔥 Más de 3 años",  callback_data="niv:avanzado")],
+                [InlineKeyboardButton("← Atrás",          callback_data="obj:inicio")],
             ]),
             parse_mode="HTML",
         )
@@ -701,15 +771,29 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     if data.startswith("niv:"):
         await query.answer()
-        nivel = data.split(":")[1]
+        nivel_val = data.split(":")[1]
+        if nivel_val == "back":
+            # Back to gender
+            await query.edit_message_text(
+                "<b>2/6</b> — ¿Género?",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("👩 Mujer",  callback_data="gen:mujer")],
+                    [InlineKeyboardButton("👨 Hombre", callback_data="gen:hombre")],
+                    [InlineKeyboardButton("← Atrás",   callback_data="obj:inicio")],
+                ]),
+                parse_mode="HTML",
+            )
+            return
+        nivel = nivel_val
         db.upsert_perfil(uid, nivel=nivel)
         await query.edit_message_text(
-            "<b>4 de 6</b> — ¿Tienes alguna limitación física?",
+            "<b>4/6</b> — ¿Tienes alguna limitación física?",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("✅ Sin limitaciones",  callback_data="lim:ninguna")],
                 [InlineKeyboardButton("🦵 Rodilla delicada", callback_data="lim:rodilla")],
                 [InlineKeyboardButton("🔙 Espalda baja",     callback_data="lim:espalda")],
                 [InlineKeyboardButton("💪 Hombro lesionado", callback_data="lim:hombro")],
+                [InlineKeyboardButton("← Atrás",            callback_data="gen:back")],
             ]),
             parse_mode="HTML",
         )
@@ -720,14 +804,15 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         lim = data.split(":")[1]
         db.upsert_perfil(uid, limitaciones=lim)
         await query.edit_message_text(
-            "<b>5 de 6</b> — ¿Dónde entrenas normalmente?\n\n"
+            "<b>5/6</b> — ¿Dónde entrenas?\n\n"
             "🏋️ <b>Gimnasio</b> — máquinas, poleas, mancuernas, barras\n"
             "🏠 <b>Casa</b> — peso corporal, silla, escalón, botellas\n"
             "🦺 <b>Banda elástica</b> — ejercicios solo con banda",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🏋️ Voy al gimnasio",       callback_data="amb:gym")],
-                [InlineKeyboardButton("🏠 Entreno en casa",        callback_data="amb:home")],
+                [InlineKeyboardButton("🏋️ Voy al gimnasio",        callback_data="amb:gym")],
+                [InlineKeyboardButton("🏠 Entreno en casa",         callback_data="amb:home")],
                 [InlineKeyboardButton("🦺 Casa con banda elástica", callback_data="amb:band")],
+                [InlineKeyboardButton("← Atrás",                   callback_data="niv:back")],
             ]),
             parse_mode="HTML",
         )
@@ -736,16 +821,31 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if data.startswith("amb:"):
         await query.answer()
         ambiente = data.split(":")[1]
+        if ambiente == "back":
+            # Back to limitaciones
+            await query.edit_message_text(
+                "<b>4/6</b> — ¿Limitación física?",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("✅ Sin limitaciones",  callback_data="lim:ninguna")],
+                    [InlineKeyboardButton("🦵 Rodilla delicada", callback_data="lim:rodilla")],
+                    [InlineKeyboardButton("🔙 Espalda baja",     callback_data="lim:espalda")],
+                    [InlineKeyboardButton("💪 Hombro lesionado", callback_data="lim:hombro")],
+                    [InlineKeyboardButton("← Atrás",            callback_data="niv:back")],
+                ]),
+                parse_mode="HTML",
+            )
+            return
         db.upsert_perfil(uid, ambiente_preferido=ambiente)
         amb_desc = {"gym": "gimnasio 🏋️", "home": "casa 🏠", "band": "banda elástica 🦺"}.get(ambiente, ambiente)
         await query.edit_message_text(
-            f"<b>6/6</b> — ¿Días por semana?"
+            f"<b>6/6</b> — ¿Días por semana?\n\n"
             f"<i>Plan para {amb_desc}</i>",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("3️⃣ 3 días", callback_data="dias:3")],
                 [InlineKeyboardButton("4️⃣ 4 días", callback_data="dias:4")],
                 [InlineKeyboardButton("5️⃣ 5 días", callback_data="dias:5")],
                 [InlineKeyboardButton("6️⃣ 6 días", callback_data="dias:6")],
+                [InlineKeyboardButton("← Atrás",   callback_data="amb:back")],
             ]),
             parse_mode="HTML",
         )
@@ -935,6 +1035,46 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await _mostrar_peso_prompt(uid, sem, dia, fuerza, 0, query=query)
         else:
             await _post_pesos(uid, sem, dia, query, context)
+        return
+
+    if data.startswith("skip_day:"):
+        await query.answer()
+        _, sem_s, dia = data.split(":")
+        sem = int(sem_s)
+        # Check if partially done
+        ejs = db.get_ejercicios_dia(uid, sem, dia)
+        hechos = sum(1 for e in ejs if e["completado"])
+        if hechos > 0:
+            # Already started — ask what to do
+            await query.edit_message_text(
+                f"Llevas {hechos}/{len(ejs)} ejercicios marcados.\n\n"
+                "¿Qué hacemos?",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton(
+                        "⏭ Saltar sin guardar",
+                        callback_data=f"skip_confirm:{sem}:{dia}:discard"
+                    )],
+                    [InlineKeyboardButton(
+                        "💾 Guardar lo que hice y saltar",
+                        callback_data=f"skip_confirm:{sem}:{dia}:save"
+                    )],
+                    [InlineKeyboardButton(
+                        "🔙 Volver a la rutina",
+                        callback_data="menu:hoy"
+                    )],
+                ]),
+                parse_mode="HTML",
+            )
+        else:
+            # Nothing done — skip directly
+            await _do_skip_day(uid, sem, dia, query, context, save=False)
+        return
+
+    if data.startswith("skip_confirm:"):
+        await query.answer()
+        _, sem_s, dia, modo = data.split(":")
+        sem = int(sem_s)
+        await _do_skip_day(uid, sem, dia, query, context, save=(modo == "save"))
         return
 
     if data.startswith("skip_pesos:"):
@@ -1131,6 +1271,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("stats",      cmd_stats))
     app.add_handler(CommandHandler("resumen",    cmd_resumen))
     app.add_handler(CommandHandler("reset_plan", cmd_reset_plan))
+    app.add_handler(CommandHandler("setpin",     cmd_setpin))
     app.add_handler(CommandHandler("adduser",    cmd_adduser))
 
     app.add_handler(CallbackQueryHandler(cb_rir,         pattern="^rir:"))
