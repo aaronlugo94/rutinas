@@ -53,6 +53,14 @@ async def enviar_recordatorios(app) -> None:
             logger.warning("Error recordatorio uid=%s: %s", uid, e)
 
 
+def run_api() -> None:
+    """Corre FastAPI en un thread separado."""
+    import uvicorn
+    from api import app as fastapi_app
+    port = int(os.environ.get("API_PORT", "8000"))
+    uvicorn.run(fastapi_app, host="0.0.0.0", port=port, log_level="warning")
+
+
 def main() -> None:
     token = os.environ.get("TELEGRAM_TOKEN")
     if not token:
@@ -61,10 +69,15 @@ def main() -> None:
     db.init_db()
     handlers.load_allowed_users()
 
+    # Arrancar FastAPI en background thread
+    import threading
+    api_thread = threading.Thread(target=run_api, daemon=True)
+    api_thread.start()
+    logger.info("API corriendo en puerto %s", os.environ.get("API_PORT", "8000"))
+
     app = Application.builder().token(token).build()
     handlers.register_handlers(app)
 
-    # Recordatorios diarios — corre cada 60 segundos
     job_queue = app.job_queue
     if job_queue:
         job_queue.run_repeating(
