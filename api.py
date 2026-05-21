@@ -398,8 +398,8 @@ class PesoRequest(BaseModel):
     peso_lbs:     float
     semana:       int
     dia:          str
-    series:       int | None = None
-    reps:         str | None = None
+    series:       int   = None
+    reps:         str   = None
 
 
 @app.post("/pesos")
@@ -554,7 +554,7 @@ def health():
 
 # ── STARTUP ───────────────────────────────────────────────────────────────────
 
-@app.on_event("startup")
+@app.on_event("startup")  # noqa
 def startup():
     db.init_db()
     # Agregar columna pin si no existe (migración suave)
