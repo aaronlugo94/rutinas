@@ -47,13 +47,8 @@ app = FastAPI(title="GymCoach API", version="1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "https://*.vercel.app",
-        os.environ.get("FRONTEND_URL", ""),
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -93,9 +88,10 @@ def login(req: LoginRequest):
     )
     if not row:
         raise HTTPException(status_code=404, detail="Usuario no encontrado. Usa el bot primero.")
-    if not row["pin"]:
-        raise HTTPException(status_code=400, detail="Configura tu PIN en el bot: /setpin 1234")
-    if row["pin"] != req.pin:
+    stored_pin = row["pin"] if row["pin"] else None
+    if not stored_pin:
+        raise HTTPException(status_code=400, detail="Configura tu PIN en el bot de Telegram: /setpin 1234")
+    if stored_pin != req.pin:
         raise HTTPException(status_code=401, detail="PIN incorrecto")
 
     token = create_token(req.user_id)
