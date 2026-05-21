@@ -124,7 +124,7 @@ def rutina_html(user_id: int, semana: int, dia: str) -> tuple[str, InlineKeyboar
         msg += f"🔥 <b>Calentamiento:</b> {nombre_cal}\n<i>{nota_cal}</i>\n\n"
 
     # EJERCICIOS
-    msg += "<b>Ejercicios</b>\n"
+    msg += "<b>Ejercicios</b>  <i>↓ Haz todos, luego toca Terminé</i>\n"
 
     keyboard  = []
 
@@ -157,7 +157,7 @@ def rutina_html(user_id: int, semana: int, dia: str) -> tuple[str, InlineKeyboar
             # Solo botón de swap — los checks ya no son necesarios
             keyboard.append([
                 InlineKeyboardButton(
-                    f"🔄 Cambiar {nex[:25]}",
+                    f"🔄 No me gusta — cambiar {nex[:20]}",
                     callback_data=f"swp_ask:{eid}:{semana}:{dia}",
                 ),
             ])
@@ -167,27 +167,27 @@ def rutina_html(user_id: int, semana: int, dia: str) -> tuple[str, InlineKeyboar
 
 
     keyboard += [
-        [InlineKeyboardButton("✅ Terminé",        callback_data=f"finish:{semana}:{dia}"),
-         InlineKeyboardButton("⏭ Saltar día",     callback_data=f"skip_day:{semana}:{dia}"),
-         InlineKeyboardButton("❓",                callback_data="ver_ayuda")],
+        [InlineKeyboardButton("✅ Terminé — registré todo", callback_data=f"finish:{semana}:{dia}")],
+        [InlineKeyboardButton("⏭ Saltar este día",          callback_data=f"skip_day:{semana}:{dia}"),
+         InlineKeyboardButton("❓ Ayuda",                    callback_data="ver_ayuda")],
     ]
 
     return msg, InlineKeyboardMarkup(keyboard)
 
 
-def _msg_dia_libre(dia: str) -> str:
-    from planner import RECOVERY_OPCIONES
-    opts = "\n".join(
-        f"  {emoji} <b>{nombre}</b>\n    <i>{desc}</i>"
-        for emoji, nombre, desc in [(o[0].split()[0], o[0].split(maxsplit=1)[1], o[1])
-                                     for o in RECOVERY_OPCIONES]
+def _msg_dia_libre(dia: str) -> tuple[str, InlineKeyboardMarkup]:
+    opts_texto = (
+        f"<b>{dia.capitalize()} — Día de descanso</b>\n\n"
+        "Elige tu recovery de hoy 👇"
     )
-    return (
-        f"<b>{dia.capitalize()} — Recovery activo</b>\n\n"
-        "El músculo crece hoy. Elige una actividad:\n\n"
-        f"{opts}\n\n"
-        "<i>Proteína alta aunque no entrenes. Duerme 7-9 hrs.</i>"
-    )
+    teclado = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🧘 Movilidad (15 min)",       callback_data="recovery:movilidad")],
+        [InlineKeyboardButton("🚶 Caminata suave (30 min)",  callback_data="recovery:caminata")],
+        [InlineKeyboardButton("🚴 Bici zona 1 (30 min)",     callback_data="recovery:bici")],
+        [InlineKeyboardButton("🎯 Core ligero (plancha+abs)", callback_data="recovery:core")],
+        [InlineKeyboardButton("😴 Solo descansar hoy",       callback_data="recovery:descanso")],
+    ])
+    return opts_texto, teclado
 
 
 def _msg_plan_completo(user_id: int) -> str:
