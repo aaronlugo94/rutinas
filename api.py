@@ -563,3 +563,48 @@ def startup():
     except Exception:
         pass   # ya existe
     logger.info("GymCoach API lista")
+
+    # Arrancar el bot de Telegram en background thread
+    import threading, os
+    token = os.environ.get("TELEGRAM_TOKEN")
+    if token:
+        def run_bot():
+            import asyncio
+            import handlers as h
+            from telegram.ext import Application
+            h.load_allowed_users()
+            bot_app = Application.builder().token(token).build()
+            h.register_handlers(bot_app)
+
+            async def recordatorios(ctx):
+                import pytz
+                from datetime import datetime
+                tz   = pytz.timezone("America/Phoenix")
+                hora = datetime.now(tz).strftime("%H:%M")
+                uids = db.get_usuarios_con_recordatorio(hora)
+                msgs_grupo = {
+                    "gluteo": "Hoy toca glúteo. Hip thrust primero.",
+                    "pierna": "Día de pierna. El más difícil. El que más vale.",
+                    "empuje": "Hoy empuje. Calienta el hombro antes del press.",
+                    "tiron":  "Tirón hoy. Piensa en jalar con los codos.",
+                }
+                for uid in uids:
+                    try:
+                        semana, dia = db.get_estado(uid)
+                        ejs   = db.get_ejercicios_dia(uid, semana, dia)
+                        grupo = ejs[0].get("grupo", "") if ejs else ""
+                        texto = msgs_grupo.get(grupo, "Tu rutina de hoy está lista.")
+                        await bot_app.bot.send_message(chat_id=uid, text=texto)
+                    except Exception as e:
+                        logger.warning("Recordatorio uid=%s: %s", uid, e)
+
+            jq = bot_app.job_queue
+            if jq:
+                jq.run_repeating(recordatorios, interval=60, first=10)
+            bot_app.run_polling(drop_pending_updates=True)
+
+        t = threading.Thread(target=run_bot, daemon=True)
+        t.start()
+        logger.info("Bot de Telegram arrancado en background")
+    else:
+        logger.warning("TELEGRAM_TOKEN no encontrado — bot no arrancado")
