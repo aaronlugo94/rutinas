@@ -91,5 +91,13 @@ def main() -> None:
     app.run_polling(drop_pending_updates=True)
 
 
+# Exportar FastAPI app a nivel de módulo
+# Así Railway puede encontrarlo con `uvicorn main:app`
+# Y `python main.py` sigue corriendo el bot normalmente
+try:
+    from api import app  # noqa — expuesto para uvicorn
+except Exception:
+    app = None
+
 if __name__ == "__main__":
     main()
