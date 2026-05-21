@@ -14,6 +14,11 @@ logger = logging.getLogger(__name__)
 
 DB_PATH = os.environ.get("DB_PATH", "gymbot.db")
 
+# Crear el directorio si no existe (necesario en Railway con volumen)
+_db_dir = os.path.dirname(DB_PATH)
+if _db_dir and not os.path.exists(_db_dir):
+    os.makedirs(_db_dir, exist_ok=True)
+
 
 @contextmanager
 def get_db() -> Iterator[sqlite3.Connection]:
