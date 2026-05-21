@@ -572,6 +572,11 @@ def startup():
             import asyncio
             import handlers as h
             from telegram.ext import Application
+
+            # Python 3.10+ no crea event loop en threads — hay que crearlo
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
             h.load_allowed_users()
             bot_app = Application.builder().token(token).build()
             h.register_handlers(bot_app)
