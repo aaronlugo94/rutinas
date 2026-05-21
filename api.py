@@ -555,61 +555,66 @@ def health():
 # ── STARTUP ───────────────────────────────────────────────────────────────────
 
 @app.on_event("startup")  # noqa
-def startup():
+async def startup():
     db.init_db()
-    # Agregar columna pin si no existe (migración suave)
     try:
         db.execute("ALTER TABLE usuarios ADD COLUMN pin TEXT")
     except Exception:
-        pass   # ya existe
+        pass
     logger.info("GymCoach API lista")
 
-    # Arrancar el bot de Telegram en background thread
-    import threading, os
+    # Arrancar el bot de Telegram como tarea asyncio en el mismo event loop
     token = os.environ.get("TELEGRAM_TOKEN")
     if token:
-        def run_bot():
-            import asyncio
-            import handlers as h
-            from telegram.ext import Application
-
-            # Python 3.10+ no crea event loop en threads — hay que crearlo
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-            h.load_allowed_users()
-            bot_app = Application.builder().token(token).build()
-            h.register_handlers(bot_app)
-
-            async def recordatorios(ctx):
-                import pytz
-                from datetime import datetime
-                tz   = pytz.timezone("America/Phoenix")
-                hora = datetime.now(tz).strftime("%H:%M")
-                uids = db.get_usuarios_con_recordatorio(hora)
-                msgs_grupo = {
-                    "gluteo": "Hoy toca glúteo. Hip thrust primero.",
-                    "pierna": "Día de pierna. El más difícil. El que más vale.",
-                    "empuje": "Hoy empuje. Calienta el hombro antes del press.",
-                    "tiron":  "Tirón hoy. Piensa en jalar con los codos.",
-                }
-                for uid in uids:
-                    try:
-                        semana, dia = db.get_estado(uid)
-                        ejs   = db.get_ejercicios_dia(uid, semana, dia)
-                        grupo = ejs[0].get("grupo", "") if ejs else ""
-                        texto = msgs_grupo.get(grupo, "Tu rutina de hoy está lista.")
-                        await bot_app.bot.send_message(chat_id=uid, text=texto)
-                    except Exception as e:
-                        logger.warning("Recordatorio uid=%s: %s", uid, e)
-
-            jq = bot_app.job_queue
-            if jq:
-                jq.run_repeating(recordatorios, interval=60, first=10)
-            bot_app.run_polling(drop_pending_updates=True)
-
-        t = threading.Thread(target=run_bot, daemon=True)
-        t.start()
-        logger.info("Bot de Telegram arrancado en background")
+        import asyncio
+        asyncio.create_task(_run_bot(token))
+        logger.info("Bot de Telegram arrancado como tarea asyncio")
     else:
         logger.warning("TELEGRAM_TOKEN no encontrado — bot no arrancado")
+
+
+async def _run_bot(token: str) -> None:
+    """Corre el bot de Telegram en el mismo event loop que FastAPI."""
+    import handlers as h
+    from telegram.ext import Application
+
+    h.load_allowed_users()
+    bot_app = Application.builder().token(token).build()
+    h.register_handlers(bot_app)
+
+    async def recordatorios(ctx) -> None:
+        import pytz
+        from datetime import datetime
+        tz   = pytz.timezone("America/Phoenix")
+        hora = datetime.now(tz).strftime("%H:%M")
+        uids = db.get_usuarios_con_recordatorio(hora)
+        msgs_grupo = {
+            "gluteo": "Hoy toca glúteo. Hip thrust primero.",
+            "pierna": "Día de pierna. El más difícil. El que más vale.",
+            "empuje": "Hoy empuje. Calienta el hombro antes del press.",
+            "tiron":  "Tirón hoy. Piensa en jalar con los codos.",
+        }
+        for uid in uids:
+            try:
+                semana, dia = db.get_estado(uid)
+                ejs   = db.get_ejercicios_dia(uid, semana, dia)
+                grupo = ejs[0].get("grupo", "") if ejs else ""
+                texto = msgs_grupo.get(grupo, "Tu rutina de hoy está lista.")
+                await bot_app.bot.send_message(chat_id=uid, text=texto)
+            except Exception as e:
+                logger.warning("Recordatorio uid=%s: %s", uid, e)
+
+    jq = bot_app.job_queue
+    if jq:
+        jq.run_repeating(recordatorios, interval=60, first=10)
+
+    # Usar initialize/start/run en lugar de run_polling()
+    # run_polling() intenta manejar signals — no funciona fuera del main thread
+    await bot_app.initialize()
+    await bot_app.start()
+    await bot_app.updater.start_polling(drop_pending_updates=True)
+    logger.info("Bot polling activo")
+    # Mantener corriendo indefinidamente
+    import asyncio
+    while True:
+        await asyncio.sleep(3600)
