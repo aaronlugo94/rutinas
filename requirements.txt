@@ -1,7 +1,7 @@
 python-telegram-bot[job-queue]==21.*
-google-genai==0.*
 pytz==2024.*
 fastapi==0.*
 uvicorn==0.*
 python-jose[cryptography]==3.*
 passlib==1.*
+google-genai==0.*
