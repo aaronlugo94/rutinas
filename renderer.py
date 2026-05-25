@@ -5,6 +5,7 @@ Diseño: impacto visual máximo dentro de Telegram HTML.
 Integra: racha, XP, tipo de sesión glúteo, calentamiento, nutrición, barra de progreso.
 """
 from __future__ import annotations
+import os
 
 import html
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -322,11 +323,10 @@ def kb_fatiga(semana: int, dia: str, incluir_saltar: bool = False) -> InlineKeyb
     return InlineKeyboardMarkup(rows)
 
 
+WEB_URL = os.environ.get("FRONTEND_URL", "https://gymcoach.vercel.app")
+
 MENU_PRINCIPAL = InlineKeyboardMarkup([
-    [InlineKeyboardButton("💪 Rutina de hoy",    callback_data="menu:hoy")],
-    [InlineKeyboardButton("📈 Mi progreso",      callback_data="prog_lista")],
-    [InlineKeyboardButton("📊 Stats",            callback_data="ver_stats"),
-     InlineKeyboardButton("📅 Semana",           callback_data="ver_resumen")],
-    [InlineKeyboardButton("😴 Muy cansado",      callback_data="ver_fatiga"),
-     InlineKeyboardButton("🆕 Nuevo plan",       callback_data="menu:nuevo")],
+    [InlineKeyboardButton("💪 Mi rutina de hoy",          callback_data="menu:hoy")],
+    [InlineKeyboardButton("🌐 Ver progreso y stats →",    url=WEB_URL)],
+    [InlineKeyboardButton("🆕 Nuevo plan",                callback_data="menu:nuevo")],
 ])
