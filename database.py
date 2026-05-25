@@ -92,6 +92,15 @@ def init_db() -> None:
         updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS sesion_activa (
+        user_id INTEGER PRIMARY KEY,
+        semana INTEGER,
+        dia TEXT,
+        ej_idx INTEGER DEFAULT 0,
+        fase TEXT DEFAULT 'ejercicio',
+        updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE INDEX IF NOT EXISTS idx_pesos_user_ej
         ON pesos(user_id, ejercicio_id, fecha DESC);
 
@@ -593,6 +602,28 @@ def get_resumen_progresion(user_id: int) -> dict:
         ORDER BY (MAX(peso_lbs) - MIN(peso_lbs)) DESC
     """, (user_id,))
     return {r["ejercicio_id"]: dict(r) for r in rows}
+
+
+# ─── SESIÓN ACTIVA (ejercicio por ejercicio) ──────────────────────────────────
+
+def save_sesion_activa(user_id: int, semana: int, dia: str,
+                       ej_idx: int, fase: str = "ejercicio") -> None:
+    execute("""
+        INSERT INTO sesion_activa (user_id, semana, dia, ej_idx, fase)
+        VALUES (?,?,?,?,?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            semana=?, dia=?, ej_idx=?, fase=?, updated=CURRENT_TIMESTAMP
+    """, (user_id, semana, dia, ej_idx, fase,
+          semana, dia, ej_idx, fase))
+
+
+def get_sesion_activa(user_id: int) -> dict | None:
+    row = fetchone("SELECT * FROM sesion_activa WHERE user_id=?", (user_id,))
+    return dict(row) if row else None
+
+
+def clear_sesion_activa(user_id: int) -> None:
+    execute("DELETE FROM sesion_activa WHERE user_id=?", (user_id,))
 
 # ─── ESTADO DE FLUJO DE PESOS (persiste en DB, no en memoria) ─────────────────
 
