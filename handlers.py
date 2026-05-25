@@ -938,40 +938,46 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     # ── SWAP ──────────────────────────────────────────────────────────────────
     if data.startswith("swp_ask:"):
-        parts   = data.split(":")
-        eid, sem_s, dia = parts[1], parts[2], parts[3]
-        pagina  = int(parts[4]) if len(parts) > 4 else 0
-        sem     = int(sem_s)
-        excluir = {e["ejercicio_id"] for e in db.get_ejercicios_dia(uid, sem, dia)}
-        perfil  = db.get_perfil(uid)
+        parts    = data.split(":")
+        eid      = parts[1]
+        sem_s    = parts[2]
+        dia      = parts[3]
+        pagina   = int(parts[4]) if len(parts) > 4 else 0
+        sem      = int(sem_s)
+        excluir  = {e["ejercicio_id"] for e in db.get_ejercicios_dia(uid, sem, dia)}
+        perfil   = db.get_perfil(uid)
         ambiente = perfil.get("ambiente_preferido", "gym")
-        alts    = cat.alternativas(eid, excluir, ambiente=ambiente)
+        alts     = cat.alternativas(eid, excluir, ambiente=ambiente)
         if not alts:
-            await query.answer("No hay más alternativas 😅", show_alert=True)
+            await query.answer("No hay más alternativas disponibles", show_alert=True)
             return
         await query.answer()
         original  = cat.BY_ID[eid].nombre if cat.is_valid(eid) else eid
-        por_pagina = 4
-        inicio    = pagina * por_pagina
+        por_pagina = 5
+        inicio     = pagina * por_pagina
         pagina_alts = alts[inicio:inicio + por_pagina]
-        hay_mas   = len(alts) > inicio + por_pagina
+        hay_mas    = len(alts) > inicio + por_pagina
+        total      = len(alts)
+
         filas = [[InlineKeyboardButton(
-            f"⚡{a.emg_score} {a.nombre}",
+            f"⚡{a.emg_score}  {a.nombre}",
             callback_data=f"swp_do:{eid}:{a.id}:{sem_s}:{dia}",
         )] for a in pagina_alts]
+
         nav = []
         if pagina > 0:
-            nav.append(InlineKeyboardButton("← Anteriores", callback_data=f"swp_ask:{eid}:{sem_s}:{dia}:{pagina-1}"))
+            nav.append(InlineKeyboardButton("← Atrás", callback_data=f"swp_ask:{eid}:{sem_s}:{dia}:{pagina-1}"))
         if hay_mas:
-            nav.append(InlineKeyboardButton("Ver más →", callback_data=f"swp_ask:{eid}:{sem_s}:{dia}:{pagina+1}"))
+            nav.append(InlineKeyboardButton(f"Ver más ({inicio+por_pagina+1}-{min(inicio+por_pagina*2, total)}) →",
+                                            callback_data=f"swp_ask:{eid}:{sem_s}:{dia}:{pagina+1}"))
         if nav:
             filas.append(nav)
-        filas.append([InlineKeyboardButton("❌ Cancelar", callback_data=f"swp_cancel:{sem_s}:{dia}")])
-        total_str = f" ({inicio+1}-{min(inicio+por_pagina, len(alts))} de {len(alts)})"
+        filas.append([InlineKeyboardButton("✖ Cancelar", callback_data=f"swp_cancel:{sem_s}:{dia}")])
+
         await query.edit_message_text(
-            f"🔄 <b>Cambiar:</b> {ren.safe(original)}{total_str}\n"
-            "Por activación muscular (EMG ⚡):",
-            reply_markup=InlineKeyboardMarkup(filas), parse_mode="HTML",
+            f"Cambiar: <b>{ren.safe(original)}</b>\n<i>Opciones {inicio+1}-{min(inicio+por_pagina, total)} de {total}</i>",
+            reply_markup=InlineKeyboardMarkup(filas),
+            parse_mode="HTML",
         )
         return
 
@@ -1320,19 +1326,16 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             f"✅ <b>Plan listo.</b>\n\n"
             f"{hora_msg}\n"
             f"🌙 Resumen nocturno a las 9:00 PM\n\n"
-            f"Toca el botón para empezar 👇",
+            f"<b>Cómo funciona:</b>\n"
+            f"1️⃣ Abre tu rutina y entrena\n"
+            f"2️⃣ Toca <b>✅ Terminé</b> al acabar\n"
+            f"3️⃣ Registra cuántas lbs usaste\n"
+            f"→ La siguiente semana te digo cuánto subir\n\n"
+            f"¿Listo? 👇",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("💪 Ver mi rutina de hoy", callback_data="menu:hoy")
             ]]),
             parse_mode="HTML",
-        )
-        await context.bot.send_message(
-            chat_id      = query.message.chat_id,
-            text         = "Paso 1 de 3 — Entrenar\n\nAbre tu rutina, haz los ejercicios, toca <b>✅ Terminé</b> al acabar.",
-            parse_mode   = "HTML",
-            reply_markup = InlineKeyboardMarkup([[
-                InlineKeyboardButton("Siguiente →", callback_data="tip:2")
-            ]]),
         )
         return
 
