@@ -78,6 +78,146 @@ def _tipo_key(ses_info: dict) -> str:
 # RUTINA DEL DÍA
 # ══════════════════════════════════════════════════════════════════════════════
 
+def rutina_preview(user_id: int, semana: int, dia: str) -> tuple[str, InlineKeyboardMarkup]:
+    """
+    Vista completa de la rutina con botón Empezar.
+    El usuario revisa qué toca, luego toca Empezar para ir ejercicio por ejercicio.
+    """
+    ejercicios = db.get_ejercicios_dia(user_id, semana, dia)
+    if not ejercicios:
+        msg, kb = _msg_dia_libre(dia)
+        return msg, kb
+
+    grupo   = ejercicios[0].get("grupo", "general")
+    dur     = _estimar_duracion(ejercicios)
+    icon    = cat.GRUPO_ICON.get(grupo, "💪")
+    perfil  = db.get_perfil(user_id)
+    ambiente = perfil.get("ambiente_preferido", "gym")
+    amb_tag = "🏠 Casa" if ambiente in ("home", "band") else "🏋️ Gym"
+    racha   = gam.get_racha(user_id)
+
+    # Header
+    from catalog import CALENTAMIENTO
+    cal = CALENTAMIENTO.get(grupo, [("5 min caminata o bici suave", "")])[0]
+
+    racha_str = f"🔥 {racha} días de racha\n" if racha >= 3 else ""
+    msg = (
+        f"<b>S{semana} · {dia.capitalize()}</b>  {amb_tag}  ~{dur} min\n"
+        f"{racha_str}"
+        f"\n🔥 <b>Calentamiento:</b> {cal[0]}\n\n"
+        f"<b>Rutina de hoy:</b>\n"
+    )
+
+    fuerza = [e for e in ejercicios if not e["ejercicio_id"].startswith("CAR")]
+    cardio = next((e for e in ejercicios if e["ejercicio_id"].startswith("CAR")), None)
+
+    for i, ej in enumerate(fuerza, 1):
+        ultimo = db.get_ultimo_peso(user_id, ej["ejercicio_id"])
+        sug    = db.get_peso_sugerido(user_id, ej["ejercicio_id"])
+        peso_str = ""
+        if sug:
+            peso_str = f"  <i>→ {sug} lbs</i>"
+        elif ultimo and ultimo.get("peso_lbs"):
+            peso_str = f"  <i>última: {ultimo['peso_lbs']:g} lbs</i>"
+        msg += f"{i}. {safe(ej['ejercicio'])}  {ej['series']}×{ej['reps']}{peso_str}\n"
+
+    if cardio:
+        msg += f"🏃 {safe(cardio['ejercicio'])}  {cardio['reps']} · Zona 2\n"
+
+    msg += "\nRevisa las máquinas y toca <b>Empezar</b> cuando estés listo 👇"
+
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("▶ Empezar sesión", callback_data=f"ej_start:{semana}:{dia}")],
+        [InlineKeyboardButton("⏭ Saltar este día", callback_data=f"skip_day:{semana}:{dia}"),
+         InlineKeyboardButton("❓ Ayuda",           callback_data="ver_ayuda")],
+    ])
+    return msg, kb
+
+
+def render_ejercicio(user_id: int, semana: int, dia: str, idx: int) -> tuple[str, InlineKeyboardMarkup]:
+    """
+    Render de un solo ejercicio durante la sesión.
+    Muestra: ejercicio actual + preview del siguiente.
+    """
+    ejercicios = db.get_ejercicios_dia(user_id, semana, dia)
+    fuerza     = [e for e in ejercicios if not e["ejercicio_id"].startswith("CAR")]
+    cardio     = next((e for e in ejercicios if e["ejercicio_id"].startswith("CAR")), None)
+    total      = len(fuerza)
+
+    if idx >= total:
+        # Cardio o fin
+        if cardio:
+            msg = (
+                f"🏃 <b>Cardio — último paso</b>\n\n"
+                f"{safe(cardio['ejercicio'])}\n"
+                f"{cardio['reps']} · Zona 2 (120-135 bpm)\n\n"
+                f"Cuando termines toca <b>Terminé</b> 👇"
+            )
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("✅ Terminé la sesión", callback_data=f"ej_done:{semana}:{dia}")
+            ]])
+        else:
+            msg = "✅ Todos los ejercicios completados. Toca <b>Terminé</b> 👇"
+            kb  = InlineKeyboardMarkup([[
+                InlineKeyboardButton("✅ Terminé la sesión", callback_data=f"ej_done:{semana}:{dia}")
+            ]])
+        return msg, kb
+
+    ej     = fuerza[idx]
+    eid    = ej["ejercicio_id"]
+    nombre = safe(ej["ejercicio"])
+    ultimo = db.get_ultimo_peso(user_id, eid)
+    sug    = db.get_peso_sugerido(user_id, eid)
+
+    # Peso hint
+    if sug and ultimo and ultimo.get("peso_lbs"):
+        peso_line = f"<s>{ultimo['peso_lbs']:g} lbs</s>  →  <b>{sug} lbs hoy</b>"
+    elif ultimo and ultimo.get("peso_lbs"):
+        peso_line = f"Última vez: {ultimo['peso_lbs']:g} lbs"
+    else:
+        peso_line = "<i>Primera vez — pon un peso que puedas controlar</i>"
+
+    # Preview siguiente
+    if idx + 1 < total:
+        sig = fuerza[idx + 1]
+        siguiente_str = f"<i>Siguiente: {safe(sig['ejercicio'])}</i>"
+    elif cardio:
+        siguiente_str = f"<i>Siguiente: {safe(cardio['ejercicio'])} — cardio</i>"
+    else:
+        siguiente_str = "\n<i>Último ejercicio</i>"
+
+    notas = ej.get("notas", "")
+
+    notas_str = f"\n<i>{safe(notas)}</i>" if notas else ""
+
+    # Lista de lo que falta
+    pendientes = fuerza[idx+1:]
+    if pendientes:
+        falta_str = "\n\n<b>Falta:</b>\n" + "\n".join(
+            f"  · {safe(e['ejercicio'][:28])}" for e in pendientes
+        )
+        if cardio:
+            falta_str += f"\n  · 🏃 {safe(cardio['ejercicio'][:25])}"
+    elif cardio:
+        falta_str = f"\n\n<b>Falta:</b>\n  · 🏃 {safe(cardio['ejercicio'][:25])}"
+    else:
+        falta_str = "\n\n<i>Último ejercicio</i>"
+
+    msg = (
+        f"<b>{idx+1}/{total} — {nombre}</b>\n"
+        f"{ej['series']} series × {ej['reps']} reps\n"
+        f"{peso_line}"
+        f"{notas_str}"
+        f"{falta_str}"
+    )
+
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 Cambiar ejercicio", callback_data=f"swp_ask:{eid}:{semana}:{dia}"),],
+        [InlineKeyboardButton("✅ Hecho", callback_data=f"ej_hecho:{semana}:{dia}:{idx}")],
+    ])
+    return msg, kb
+
+
 def rutina_html(user_id: int, semana: int, dia: str) -> tuple[str, InlineKeyboardMarkup | None]:
     ejercicios = db.get_ejercicios_dia(user_id, semana, dia)
 
