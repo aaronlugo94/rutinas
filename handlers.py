@@ -105,7 +105,11 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         racha_str = ""
     header = f"{saludo}{racha_str}\n\n"
 
-    texto, teclado = ren.rutina_html(uid, semana, dia)
+    sesion = db.get_sesion_activa(uid)
+    if sesion and sesion["semana"] == semana and sesion["dia"] == dia:
+        texto, teclado = ren.render_ejercicio(uid, semana, dia, sesion["ej_idx"])
+    else:
+        texto, teclado = ren.rutina_preview(uid, semana, dia)
     await update.message.reply_text(
         header + texto,
         reply_markup=teclado, parse_mode="HTML", disable_web_page_preview=True,
@@ -460,8 +464,19 @@ async def handler_texto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                      reps     = ej_data["reps"]   if ej_data else None)
 
         idx += 1
-        if idx >= len(ejs):
-            db.clear_peso_flow(uid)
+        db.clear_peso_flow(uid)
+
+        # Check if in exercise-by-exercise mode
+        sesion = db.get_sesion_activa(uid)
+        if sesion and sesion["fase"] == "peso":
+            ej_idx    = sesion["ej_idx"]
+            siguiente = ej_idx + 1
+            db.save_sesion_activa(uid, semana, dia, siguiente, "ejercicio")
+            texto_ej, teclado_ej = ren.render_ejercicio(uid, semana, dia, siguiente)
+            await update.message.reply_text(
+                texto_ej, reply_markup=teclado_ej, parse_mode="HTML"
+            )
+        elif idx >= len(ejs):
             class FQ:
                 message   = update.message
                 from_user = update.effective_user
@@ -680,7 +695,14 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
         if accion == "hoy":
             semana, dia = db.get_estado(uid)
-            texto, teclado = ren.rutina_html(uid, semana, dia)
+            # Check if session already started
+            sesion = db.get_sesion_activa(uid)
+            if sesion and sesion["semana"] == semana and sesion["dia"] == dia:
+                # Resume mid-session
+                texto, teclado = ren.render_ejercicio(uid, semana, dia, sesion["ej_idx"])
+            else:
+                # Show full preview first
+                texto, teclado = ren.rutina_preview(uid, semana, dia)
             await query.edit_message_text(
                 texto, reply_markup=teclado,
                 parse_mode="HTML", disable_web_page_preview=True,
@@ -1033,6 +1055,86 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await _mostrar_peso_prompt(uid, sem, dia, fuerza, 0, query=query)
         else:
             await _post_pesos(uid, sem, dia, query, context)
+        return
+
+    # ── FLUJO EJERCICIO POR EJERCICIO ──────────────────────────────────────────
+
+    if data.startswith("ej_start:"):
+        # Usuario toca Empezar — mostrar ejercicio 1
+        await query.answer()
+        _, sem_s, dia = data.split(":")
+        sem = int(sem_s)
+        db.save_sesion_activa(uid, sem, dia, 0, "ejercicio")
+        texto, teclado = ren.render_ejercicio(uid, sem, dia, 0)
+        await query.edit_message_text(texto, reply_markup=teclado,
+                                       parse_mode="HTML")
+        return
+
+    if data.startswith("ej_hecho:"):
+        # Usuario terminó un ejercicio — preguntar peso y avanzar
+        await query.answer()
+        _, sem_s, dia, idx_s = data.split(":")
+        sem = int(sem_s)
+        idx = int(idx_s)
+
+        ejercicios = db.get_ejercicios_dia(uid, sem, dia)
+        fuerza     = [e for e in ejercicios if not e["ejercicio_id"].startswith("CAR")]
+        ej         = fuerza[idx] if idx < len(fuerza) else None
+        if not ej:
+            return
+
+        eid    = ej["ejercicio_id"]
+        nombre = ej["ejercicio"][:28]
+        ultimo = db.get_ultimo_peso(uid, eid)
+        sug    = db.get_peso_sugerido(uid, eid)
+        hint   = f"Última: {ultimo['peso_lbs']:g} lbs  →  sugerido: {sug} lbs" if (
+            sug and ultimo and ultimo.get("peso_lbs")
+        ) else ("Última: " + f"{ultimo['peso_lbs']:g} lbs" if ultimo and ultimo.get("peso_lbs") else "Primera vez")
+
+        # Guardar estado: esperando peso
+        db.save_sesion_activa(uid, sem, dia, idx, "peso")
+        # Guardar qué ejercicio espera peso en peso_flow
+        db.save_peso_flow(uid, sem, dia, [eid], 0)
+
+        await query.edit_message_text(
+            f"<b>{nombre}</b>\n"
+            f"{ej['series']}×{ej['reps']}\n"
+            f"<i>{hint}</i>\n\n"
+            f"¿Cuántas lbs usaste? (0 = saltar) 👇",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("Saltar", callback_data=f"ej_skip_peso:{sem}:{dia}:{idx}")
+            ]])
+        )
+        return
+
+    if data.startswith("ej_skip_peso:"):
+        # Saltó el peso — avanzar al siguiente ejercicio
+        await query.answer()
+        _, sem_s, dia, idx_s = data.split(":")
+        sem  = int(sem_s)
+        idx  = int(idx_s)
+        db.clear_peso_flow(uid)
+        siguiente = idx + 1
+        db.save_sesion_activa(uid, sem, dia, siguiente, "ejercicio")
+        texto, teclado = ren.render_ejercicio(uid, sem, dia, siguiente)
+        await query.edit_message_text(texto, reply_markup=teclado, parse_mode="HTML")
+        return
+
+    if data.startswith("ej_done:"):
+        # Usuario terminó todos los ejercicios
+        await query.answer()
+        _, sem_s, dia = data.split(":")
+        sem = int(sem_s)
+        db.clear_sesion_activa(uid)
+        db.clear_peso_flow(uid)
+        # Marcar sesión completa
+        with db.get_db() as conn:
+            conn.execute(
+                "UPDATE rutinas SET completado=1 WHERE user_id=? AND semana=? AND dia=?",
+                (uid, sem, dia),
+            )
+        await _post_pesos(uid, sem, dia, query, context)
         return
 
     if data.startswith("skip_day:"):
