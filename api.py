@@ -77,6 +77,69 @@ class LoginRequest(BaseModel):
     pin:     str   # pin de 4 dígitos configurado en el bot con /setpin
 
 
+class TelegramAuthRequest(BaseModel):
+    id:         int
+    first_name: str    = ""
+    last_name:  str    = ""
+    username:   str    = ""
+    photo_url:  str    = ""
+    auth_date:  int    = 0
+    hash:       str    = ""
+
+
+@app.post("/auth/telegram")
+def login_telegram(req: TelegramAuthRequest):
+    """
+    Login via Telegram Login Widget.
+    Verifica la firma de Telegram para garantizar autenticidad.
+    El usuario solo necesita tocar el botón en la web — sin ID ni PIN.
+    """
+    import time, hashlib, hmac
+
+    bot_token = os.environ.get("TELEGRAM_TOKEN", "")
+    if not bot_token:
+        raise HTTPException(status_code=500, detail="Bot token no configurado")
+
+    # Verificar que el auth_date no sea muy viejo (24 horas)
+    if abs(time.time() - req.auth_date) > 86400:
+        raise HTTPException(status_code=401, detail="Autenticación expirada. Intenta de nuevo.")
+
+    # Verificar firma de Telegram
+    data_check = {k: v for k, v in req.dict().items() if k != "hash" and v}
+    data_str   = "
+".join(f"{k}={v}" for k, v in sorted(data_check.items()))
+    secret_key = hashlib.sha256(bot_token.encode()).digest()
+    expected   = hmac.new(secret_key, data_str.encode(), hashlib.sha256).hexdigest()
+
+    if not hmac.compare_digest(expected, req.hash):
+        raise HTTPException(status_code=401, detail="Firma inválida — intenta de nuevo")
+
+    uid = req.id
+
+    # Crear usuario si no existe
+    db.execute("""
+        INSERT OR IGNORE INTO usuarios (user_id, nombre)
+        VALUES (?, ?)
+    """, (uid, req.first_name))
+
+    # Agregar a allowed_users si no está
+    db.execute("""
+        INSERT OR IGNORE INTO allowed_users (user_id, activo)
+        VALUES (?, 1)
+    """, (uid,))
+
+    token  = create_token(uid)
+    perfil = db.get_perfil(uid)
+    tiene_plan = db.fetchone(
+        "SELECT COUNT(*) as n FROM rutinas WHERE user_id=?", (uid,)
+    )
+    return {
+        "token":      token,
+        "nombre":     perfil.get("nombre", req.first_name),
+        "tiene_plan": (tiene_plan["n"] > 0) if tiene_plan else False,
+    }
+
+
 @app.post("/auth/login")
 def login(req: LoginRequest):
     """
