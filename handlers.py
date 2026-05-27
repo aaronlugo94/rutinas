@@ -55,14 +55,27 @@ def load_allowed_users() -> None:
 
 async def check_auth(update: Update) -> bool:
     uid = update.effective_user.id if update.effective_user else None
-    if uid not in _ALLOWED:
+    if uid is None:
+        return False
+
+    # Si ya está permitido — adelante
+    if uid in _ALLOWED:
+        return True
+
+    # Bot abierto: agregar automáticamente a cualquier usuario nuevo
+    nombre = update.effective_user.first_name if update.effective_user else ""
+    try:
+        db.execute(
+            "INSERT OR IGNORE INTO usuarios (user_id, nombre) VALUES (?, ?)",
+            (uid, nombre)
+        )
+        db.add_allowed_user(uid)
+        _ALLOWED.add(uid)
+        logger.info("Nuevo usuario agregado: %s (%s)", uid, nombre)
+    except Exception as e:
+        logger.warning("Error agregando usuario %s: %s", uid, e)
         if update.message:
-            nombre = update.effective_user.first_name if update.effective_user else "ahí"
-            await update.message.reply_text(
-                f"Hola {nombre} 👋\n\n"
-                "Este bot es privado por ahora.\n"
-                "Si quieres acceso, pídele al admin que te agregue.",
-            )
+            await update.message.reply_text("Hubo un error. Intenta de nuevo.")
         return False
     return True
 
