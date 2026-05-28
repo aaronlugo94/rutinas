@@ -47,8 +47,14 @@ app = FastAPI(title="GymCoach API", version="1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=[
+        "https://rutinas-nine.vercel.app",
+        "https://*.vercel.app",
+        "http://localhost:3000",
+        "http://localhost:5173",
+        os.environ.get("FRONTEND_URL", ""),
+    ],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -616,10 +622,22 @@ def health():
 @app.on_event("startup")  # noqa
 async def startup():
     db.init_db()
-    try:
-        db.execute("ALTER TABLE usuarios ADD COLUMN pin TEXT")
-    except Exception:
-        pass
+    for sql in [
+        "ALTER TABLE usuarios ADD COLUMN pin TEXT",
+        "ALTER TABLE usuarios ADD COLUMN hora_recordatorio TEXT",
+        """CREATE TABLE IF NOT EXISTS sesion_activa (
+            user_id INTEGER PRIMARY KEY, semana INTEGER, dia TEXT,
+            ej_idx INTEGER DEFAULT 0, fase TEXT DEFAULT 'ejercicio',
+            updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+        """CREATE TABLE IF NOT EXISTS peso_flow (
+            user_id INTEGER PRIMARY KEY, semana INTEGER, dia TEXT,
+            ejercicios TEXT, idx INTEGER DEFAULT 0,
+            updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+    ]:
+        try:
+            db.execute(sql)
+        except Exception:
+            pass
     logger.info("GymCoach API lista")
 
     # Arrancar el bot de Telegram como tarea asyncio en el mismo event loop
