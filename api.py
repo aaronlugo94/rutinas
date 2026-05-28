@@ -108,8 +108,7 @@ def login_telegram(req: TelegramAuthRequest):
 
     # Verificar firma de Telegram
     data_check = {k: v for k, v in req.dict().items() if k != "hash" and v}
-    data_str   = "
-".join(f"{k}={v}" for k, v in sorted(data_check.items()))
+    data_str   = "\n".join(f"{k}={v}" for k, v in sorted(data_check.items()))
     secret_key = hashlib.sha256(bot_token.encode()).digest()
     expected   = hmac.new(secret_key, data_str.encode(), hashlib.sha256).hexdigest()
 
