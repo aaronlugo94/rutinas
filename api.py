@@ -45,19 +45,46 @@ TOKEN_HOURS = 24 * 30   # 30 días
 
 app = FastAPI(title="GymCoach API", version="1.0")
 
+# Lista explícita de orígenes permitidos
+_ALLOWED_ORIGINS = [
+    "https://rutinas-nine.vercel.app",
+    "http://localhost:3000",
+    "http://localhost:5173",
+]
+_env_origin = os.environ.get("FRONTEND_URL", "")
+if _env_origin:
+    _ALLOWED_ORIGINS.append(_env_origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://rutinas-nine.vercel.app",
-        "https://*.vercel.app",
-        "http://localhost:3000",
-        "http://localhost:5173",
-        os.environ.get("FRONTEND_URL", ""),
-    ],
+    allow_origins=_ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
+    expose_headers=["*"],
+    max_age=600,
 )
+
+
+@app.middleware("http")
+async def cors_fallback(request, call_next):
+    """Fallback CORS handler — responde OPTIONS sin importar la ruta."""
+    if request.method == "OPTIONS":
+        from fastapi.responses import Response
+        origin = request.headers.get("origin", "")
+        resp = Response(status_code=200)
+        resp.headers["Access-Control-Allow-Origin"]  = origin or "*"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept"
+        resp.headers["Access-Control-Allow-Credentials"] = "true"
+        resp.headers["Access-Control-Max-Age"] = "600"
+        return resp
+    response = await call_next(request)
+    origin = request.headers.get("origin", "")
+    if origin:
+        response.headers["Access-Control-Allow-Origin"]      = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
 
 bearer = HTTPBearer()
 
