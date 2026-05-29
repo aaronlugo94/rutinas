@@ -210,6 +210,24 @@ async def cmd_progreso(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
+async def cmd_login(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Genera un link mágico de un solo clic para entrar a la web."""
+    if not await check_auth(update):
+        return
+    uid   = update.effective_user.id
+    token = db.create_login_token(uid)
+    from renderer import WEB_URL
+    url   = f"{WEB_URL}/auth?token={token}"
+    await update.message.reply_text(
+        "Toca el botón para entrar a la web 👇\n"
+        "<i>El link expira en 5 minutos y es de un solo uso.</i>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("🌐 Entrar a GymCoach", url=url)
+        ]])
+    )
+
+
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await check_auth(update):
         return
@@ -232,8 +250,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         "<b>Comandos</b>\n"
         "/start — Ver mi rutina de hoy\n"
-        "/reset_plan — Crear nuevo plan\n"
-        "/setpin 1234 — Configura tu acceso a la web\n\n"
+        "/login — Entrar a la web app\n"
+        "/reset_plan — Crear nuevo plan\n\n"
 
         "<b>¿Qué es RIR?</b>\n"
         "Reps In Reserve — cuántas reps te sobraban\n"
@@ -308,9 +326,8 @@ async def _onboarding_inicio(update: Update, nombre: str = "") -> None:
     uid = update.effective_user.id
     from renderer import WEB_URL
     texto += (
-        f"\n\n🌐 <b>Acceso a la web:</b>\n"
-        f"Tu ID: <code>{uid}</code>\n"
-        f"Configura tu PIN: /setpin 1234"
+        f"\n\n🌐 <b>Para entrar a la web:</b>\n"
+        f"Escribe /login y toca el botón que aparece."
     )
     teclado = InlineKeyboardMarkup([[
         InlineKeyboardButton("💪 Crear mi plan", callback_data="obj:inicio")
@@ -1486,6 +1503,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("start",      cmd_start))
+    app.add_handler(CommandHandler("login",      cmd_login))
     app.add_handler(CommandHandler("help",       cmd_help))
     app.add_handler(CommandHandler("progreso",   cmd_progreso))
     app.add_handler(CommandHandler("menu",       cmd_menu))
