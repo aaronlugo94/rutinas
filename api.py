@@ -607,6 +607,34 @@ def set_pin(req: PinRequest) -> dict:
 
 # ── HEALTH CHECK ──────────────────────────────────────────────────────────────
 
+@app.get("/auth/token")
+def auth_token(token: str):
+    """
+    Valida un magic link token del bot.
+    El frontend llama esto cuando el usuario llega desde /login.
+    """
+    uid = db.consume_login_token(token)
+    if not uid:
+        raise HTTPException(
+            status_code=401,
+            detail="Link inválido o expirado. Escribe /login al bot para obtener uno nuevo."
+        )
+    # Asegurar que el usuario existe
+    db.execute("INSERT OR IGNORE INTO usuarios (user_id) VALUES (?)", (uid,))
+    db.execute("INSERT OR IGNORE INTO allowed_users (user_id, activo) VALUES (?,1)", (uid,))
+
+    jwt_token = create_token(uid)
+    perfil    = db.get_perfil(uid)
+    tiene_plan = db.fetchone(
+        "SELECT COUNT(*) as n FROM rutinas WHERE user_id=?", (uid,)
+    )
+    return {
+        "token":      jwt_token,
+        "nombre":     perfil.get("nombre", ""),
+        "tiene_plan": (tiene_plan["n"] > 0) if tiene_plan else False,
+    }
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "version": "1.0"}
@@ -620,6 +648,9 @@ async def startup():
     for sql in [
         "ALTER TABLE usuarios ADD COLUMN pin TEXT",
         "ALTER TABLE usuarios ADD COLUMN hora_recordatorio TEXT",
+        """CREATE TABLE IF NOT EXISTS login_tokens (
+            token TEXT PRIMARY KEY, user_id INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, used INTEGER DEFAULT 0)""",
         """CREATE TABLE IF NOT EXISTS sesion_activa (
             user_id INTEGER PRIMARY KEY, semana INTEGER, dia TEXT,
             ej_idx INTEGER DEFAULT 0, fase TEXT DEFAULT 'ejercicio',
