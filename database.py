@@ -92,6 +92,13 @@ def init_db() -> None:
         updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS login_tokens (
+        token TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        used INTEGER DEFAULT 0
+    );
+
     CREATE TABLE IF NOT EXISTS sesion_activa (
         user_id INTEGER PRIMARY KEY,
         semana INTEGER,
@@ -603,6 +610,41 @@ def get_resumen_progresion(user_id: int) -> dict:
     """, (user_id,))
     return {r["ejercicio_id"]: dict(r) for r in rows}
 
+
+
+# ─── LOGIN TOKENS (magic link) ────────────────────────────────────────────────
+
+def create_login_token(user_id: int) -> str:
+    """Genera un token de un solo uso válido por 5 minutos."""
+    import secrets
+    token = secrets.token_urlsafe(32)
+    execute("""
+        INSERT INTO login_tokens (token, user_id)
+        VALUES (?, ?)
+    """, (token, user_id))
+    # Limpiar tokens viejos
+    execute("""
+        DELETE FROM login_tokens
+        WHERE created_at < datetime('now', '-5 minutes')
+    """)
+    return token
+
+
+def consume_login_token(token: str) -> int | None:
+    """
+    Valida y consume un token. Retorna user_id si válido, None si no.
+    Token válido: existe, no usado, creado hace menos de 5 minutos.
+    """
+    row = fetchone("""
+        SELECT user_id FROM login_tokens
+        WHERE token = ?
+          AND used = 0
+          AND created_at > datetime('now', '-5 minutes')
+    """, (token,))
+    if not row:
+        return None
+    execute("UPDATE login_tokens SET used=1 WHERE token=?", (token,))
+    return int(row["user_id"])
 
 # ─── SESIÓN ACTIVA (ejercicio por ejercicio) ──────────────────────────────────
 
