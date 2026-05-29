@@ -107,8 +107,6 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         rutinas_totales = stats["rutinas_completas"],
     )
     if racha >= 7:
-        racha_str = f"\n🔥 <b>{racha} días de racha</b> — no lo rompas hoy."
-    if racha >= 7:
         racha_str = f"\n🔥 <b>{racha} días seguidos</b> — no lo rompas hoy."
     elif racha >= 3:
         racha_str = f"\n🔥 {racha} días seguidos."
@@ -306,6 +304,13 @@ async def _onboarding_inicio(update: Update, nombre: str = "") -> None:
         "📊 Stats — Tu progreso\n\n"
 
         "¿Listo? 6 preguntas y tu plan está listo en segundos."
+    )
+    uid = update.effective_user.id
+    from renderer import WEB_URL
+    texto += (
+        f"\n\n🌐 <b>Acceso a la web:</b>\n"
+        f"Tu ID: <code>{uid}</code>\n"
+        f"Configura tu PIN: /setpin 1234"
     )
     teclado = InlineKeyboardMarkup([[
         InlineKeyboardButton("💪 Crear mi plan", callback_data="obj:inicio")
