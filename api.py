@@ -635,6 +635,62 @@ def auth_token(token: str):
     }
 
 
+@app.get("/analisis")
+async def get_analisis(uid: int = Depends(get_current_user)) -> dict:
+    """Análisis con Gemini de la semana actual."""
+    import os
+    from google import genai as gai
+
+    semana, dia = db.get_estado(uid)
+    perfil      = db.get_perfil(uid)
+
+    # Recopilar datos de la semana
+    rows = db.fetchall("""
+        SELECT p.ejercicio_id, r.ejercicio, r.grupo,
+               MAX(p.peso_lbs) as peso_max,
+               LAG(MAX(p.peso_lbs)) OVER (PARTITION BY p.ejercicio_id ORDER BY p.semana) as peso_ant
+        FROM pesos p
+        JOIN rutinas r ON r.user_id=p.user_id AND r.ejercicio_id=p.ejercicio_id
+        WHERE p.user_id=? AND p.peso_lbs IS NOT NULL
+        GROUP BY p.ejercicio_id, p.semana
+        ORDER BY p.semana DESC
+        LIMIT 20
+    """, (uid,))
+
+    if not rows:
+        return {"texto": None, "tiene_datos": False}
+
+    pesos_str = "
+".join(
+        f"- {r['ejercicio']}: {r['peso_max']:g} lbs"
+        + (f" (antes: {r['peso_ant']:g} lbs)" if r['peso_ant'] else " (primera vez)")
+        for r in rows[:8]
+    )
+
+    gemini_key = os.environ.get("GEMINI_API_KEY", "")
+    if not gemini_key:
+        return {"texto": None, "tiene_datos": True}
+
+    try:
+        client = gai.Client(api_key=gemini_key)
+        resp   = client.models.generate_content(
+            model    = "gemini-2.0-flash",
+            contents = f"""Eres un coach de gym. Analiza estos datos en 2-3 líneas cortas y directas.
+Sin frases motivacionales genéricas. Solo observaciones específicas con números.
+
+Datos de entrenamiento:
+{pesos_str}
+
+Nivel: {perfil.get('nivel','intermedio')} | Objetivo: {perfil.get('objetivo','general')}
+
+Responde en español. Máximo 3 líneas. Sin bullets, en párrafo."""
+        )
+        return {"texto": resp.text.strip(), "tiene_datos": True}
+    except Exception as e:
+        logger.warning("Gemini analisis: %s", e)
+        return {"texto": None, "tiene_datos": True}
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "version": "1.0"}
