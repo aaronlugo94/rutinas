@@ -220,6 +220,11 @@ async def msg_resumen_nocturno(user_id: int) -> str:
 
     # Sí entrenó — análisis Gemini
     analisis = await _gemini_analisis(datos, perfil)
+    if analisis and analisis != _fallback_sin_gemini(datos):
+        try:
+            db.save_analisis(user_id, analisis, "nocturno")
+        except Exception:
+            pass
 
     pesos_str = ""
     if datos["pesos"]:
