@@ -660,8 +660,7 @@ async def get_analisis(uid: int = Depends(get_current_user)) -> dict:
     if not rows:
         return {"texto": None, "tiene_datos": False}
 
-    pesos_str = "
-".join(
+    pesos_str = "\n".join(
         f"- {r['ejercicio']}: {r['peso_max']:g} lbs"
         + (f" (antes: {r['peso_ant']:g} lbs)" if r['peso_ant'] else " (primera vez)")
         for r in rows[:8]
