@@ -92,6 +92,14 @@ def init_db() -> None:
         updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS analisis_historial (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        fecha TEXT NOT NULL,
+        texto TEXT NOT NULL,
+        tipo TEXT DEFAULT 'nocturno'
+    );
+
     CREATE TABLE IF NOT EXISTS login_tokens (
         token TEXT PRIMARY KEY,
         user_id INTEGER NOT NULL,
@@ -613,6 +621,16 @@ def get_resumen_progresion(user_id: int) -> dict:
 
 
 # ─── LOGIN TOKENS (magic link) ────────────────────────────────────────────────
+
+
+def save_analisis(user_id: int, texto: str, tipo: str = "nocturno") -> None:
+    """Guarda un análisis de Gemini en el historial."""
+    from datetime import datetime
+    fecha = datetime.now().strftime("%Y-%m-%d")
+    execute("""
+        INSERT INTO analisis_historial (user_id, fecha, texto, tipo)
+        VALUES (?, ?, ?, ?)
+    """, (user_id, fecha, texto, tipo))
 
 def create_login_token(user_id: int) -> str:
     """Genera un token de un solo uso válido por 5 minutos."""
