@@ -635,6 +635,16 @@ def auth_token(token: str):
     }
 
 
+@app.get("/analisis/historial")
+def get_analisis_historial(uid: int = Depends(get_current_user)) -> dict:
+    """Historial de análisis guardados."""
+    rows = db.fetchall("""
+        SELECT fecha, texto, tipo FROM analisis_historial
+        WHERE user_id=? ORDER BY fecha DESC LIMIT 14
+    """, (uid,))
+    return {"historial": [dict(r) for r in rows] if rows else []}
+
+
 @app.get("/analisis")
 async def get_analisis(uid: int = Depends(get_current_user)) -> dict:
     """Análisis con Gemini de la semana actual."""
