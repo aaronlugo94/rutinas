@@ -1,31 +1,27 @@
 """
-database.py — Capa de acceso a datos con SQLite WAL.
-Una sola función get_db() como context manager.
+database.py — DB unificada Coach.
+Tablas gym:    usuarios, rutinas, pesos, sesion_activa, peso_flow,
+               gamificacion, badges, progreso, swaps, estado,
+               allowed_users, login_tokens, analisis_historial
+Tablas cuerpo: pesajes, historico_dietas, config_nutricion
 """
 from __future__ import annotations
-
-import sqlite3
 import logging
 import os
+import sqlite3
 from contextlib import contextmanager
-from typing import Iterator
 
-logger = logging.getLogger(__name__)
-
-DB_PATH = os.environ.get("DB_PATH", "gymbot.db")
-
-# Crear el directorio si no existe (necesario en Railway con volumen)
-_db_dir = os.path.dirname(DB_PATH)
-if _db_dir and not os.path.exists(_db_dir):
-    os.makedirs(_db_dir, exist_ok=True)
-
+logger  = logging.getLogger(__name__)
+DB_PATH = os.environ.get("DB_PATH", "coach.db")
 
 @contextmanager
-def get_db() -> Iterator[sqlite3.Connection]:
+def get_db():
+    _dir = os.path.dirname(DB_PATH)
+    if _dir:
+        os.makedirs(_dir, exist_ok=True)
     conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=10000")
     conn.execute("PRAGMA foreign_keys=ON")
     try:
         yield conn
@@ -36,719 +32,371 @@ def get_db() -> Iterator[sqlite3.Connection]:
     finally:
         conn.close()
 
-
-def fetchone(sql: str, params=()) -> sqlite3.Row | None:
-    with get_db() as conn:
-        return conn.execute(sql, params).fetchone()
-
-
-def fetchall(sql: str, params=()) -> list[sqlite3.Row]:
-    with get_db() as conn:
-        return conn.execute(sql, params).fetchall()
-
-
-def execute(sql: str, params=()) -> None:
+def execute(sql, params=()):
     with get_db() as conn:
         conn.execute(sql, params)
 
-
-# ─── INIT DB ──────────────────────────────────────────────────────────────────
-
-def init_db() -> None:
-    ddl = """
-    CREATE TABLE IF NOT EXISTS usuarios (
-        user_id INTEGER PRIMARY KEY,
-        nombre TEXT,
-        genero TEXT DEFAULT 'mujer',
-        nivel TEXT DEFAULT 'principiante',
-        objetivo TEXT DEFAULT 'general',
-        limitaciones TEXT DEFAULT 'ninguna',
-        dias INTEGER DEFAULT 3,
-        duracion_min INTEGER DEFAULT 60,
-        ambiente_preferido TEXT DEFAULT 'gym',
-        hora_recordatorio TEXT DEFAULT NULL,
-        anos_entrenando INTEGER DEFAULT 0,
-        creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS pesos (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        ejercicio_id TEXT NOT NULL,
-        semana INTEGER NOT NULL,
-        dia TEXT NOT NULL,
-        peso_lbs REAL,
-        series_hechas INTEGER,
-        reps_hechas TEXT,
-        fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS peso_flow (
-        user_id INTEGER PRIMARY KEY,
-        semana INTEGER,
-        dia TEXT,
-        ejercicios TEXT,
-        idx INTEGER DEFAULT 0,
-        updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS analisis_historial (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        fecha TEXT NOT NULL,
-        texto TEXT NOT NULL,
-        tipo TEXT DEFAULT 'nocturno'
-    );
-
-    CREATE TABLE IF NOT EXISTS login_tokens (
-        token TEXT PRIMARY KEY,
-        user_id INTEGER NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        used INTEGER DEFAULT 0
-    );
-
-    CREATE TABLE IF NOT EXISTS sesion_activa (
-        user_id INTEGER PRIMARY KEY,
-        semana INTEGER,
-        dia TEXT,
-        ej_idx INTEGER DEFAULT 0,
-        fase TEXT DEFAULT 'ejercicio',
-        updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_pesos_user_ej
-        ON pesos(user_id, ejercicio_id, fecha DESC);
-
-    CREATE TABLE IF NOT EXISTS estado (
-        user_id INTEGER PRIMARY KEY,
-        semana INTEGER DEFAULT 1,
-        dia TEXT DEFAULT 'pendiente',
-        objetivo TEXT DEFAULT 'general'
-    );
-
-    CREATE TABLE IF NOT EXISTS rutinas (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        semana INTEGER NOT NULL,
-        dia TEXT NOT NULL,
-        grupo TEXT,
-        ejercicio_id TEXT NOT NULL,
-        ejercicio TEXT NOT NULL,
-        patron TEXT,
-        orden INTEGER DEFAULT 1,
-        series INTEGER DEFAULT 3,
-        reps TEXT DEFAULT '10-12',
-        notas TEXT DEFAULT '',
-        emg_score INTEGER DEFAULT 1,
-        completado INTEGER DEFAULT 0
-    );
-
-    CREATE TABLE IF NOT EXISTS progreso (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        semana INTEGER NOT NULL,
-        dia TEXT NOT NULL,
-        ejercicio_id TEXT,
-        rir_reportado INTEGER,
-        progreso_reportado TEXT,
-        fatiga_reportada INTEGER,
-        fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS swaps (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        original_id TEXT NOT NULL,
-        reemplazo_id TEXT NOT NULL,
-        grupo TEXT,
-        rol TEXT,
-        fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS milestones (
-        user_id INTEGER NOT NULL,
-        key TEXT NOT NULL,
-        fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (user_id, key)
-    );
-
-    CREATE TABLE IF NOT EXISTS prioridad_bloques (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        bloque INTEGER NOT NULL,
-        semana_inicio INTEGER,
-        grupo_prioritario TEXT,
-        grupo_secundario TEXT,
-        fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS allowed_users (
-        user_id INTEGER PRIMARY KEY,
-        activo INTEGER DEFAULT 1
-    );
-
-    CREATE TABLE IF NOT EXISTS sesion_ambiente (
-        user_id INTEGER NOT NULL,
-        semana INTEGER NOT NULL,
-        dia TEXT NOT NULL,
-        ambiente TEXT DEFAULT 'gym',
-        PRIMARY KEY (user_id, semana, dia)
-    );
-
-
-    CREATE TABLE IF NOT EXISTS gamificacion (
-        user_id INTEGER PRIMARY KEY,
-        racha_actual INTEGER DEFAULT 0,
-        racha_maxima INTEGER DEFAULT 0,
-        ultima_sesion TEXT,
-        xp_total INTEGER DEFAULT 0
-    );
-
-    CREATE TABLE IF NOT EXISTS badges (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        badge_key TEXT NOT NULL,
-        fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(user_id, badge_key)
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_badges_user ON badges(user_id);
-
-    CREATE INDEX IF NOT EXISTS idx_rutinas_user_sem_dia
-        ON rutinas(user_id, semana, dia);
-    CREATE INDEX IF NOT EXISTS idx_progreso_user
-        ON progreso(user_id, semana, dia);
-    """
+def fetchone(sql, params=()):
     with get_db() as conn:
-        for stmt in ddl.strip().split(";"):
-            stmt = stmt.strip()
-            if stmt:
-                conn.execute(stmt)
+        return conn.execute(sql, params).fetchone()
+
+def fetchall(sql, params=()):
+    with get_db() as conn:
+        return conn.execute(sql, params).fetchall()
+
+def init_db():
+    with get_db() as conn:
+        conn.executescript("""
+        CREATE TABLE IF NOT EXISTS allowed_users (
+            user_id INTEGER PRIMARY KEY, activo INTEGER DEFAULT 1);
+
+        CREATE TABLE IF NOT EXISTS usuarios (
+            user_id INTEGER PRIMARY KEY, nombre TEXT, genero TEXT,
+            nivel TEXT, objetivo TEXT, limitaciones TEXT DEFAULT 'ninguna',
+            dias INTEGER DEFAULT 4, duracion_min INTEGER DEFAULT 60,
+            ambiente_preferido TEXT DEFAULT 'gym', hora_recordatorio TEXT,
+            anos_entrenando INTEGER DEFAULT 0, pin TEXT);
+
+        CREATE TABLE IF NOT EXISTS estado (
+            user_id INTEGER PRIMARY KEY, semana INTEGER DEFAULT 1,
+            dia TEXT DEFAULT 'lunes', objetivo TEXT);
+
+        CREATE TABLE IF NOT EXISTS rutinas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
+            semana INTEGER, dia TEXT, orden INTEGER DEFAULT 0,
+            ejercicio_id TEXT, ejercicio TEXT, patron TEXT, grupo TEXT,
+            rol TEXT, series INTEGER, reps TEXT, notas TEXT,
+            emg_score INTEGER DEFAULT 1, completado INTEGER DEFAULT 0);
+
+        CREATE TABLE IF NOT EXISTS pesos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
+            ejercicio_id TEXT, semana INTEGER, dia TEXT, peso_lbs REAL,
+            series_hechas INTEGER, reps_hechas TEXT,
+            fecha TEXT DEFAULT (date('now')));
+
+        CREATE TABLE IF NOT EXISTS progreso (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
+            semana INTEGER, dia TEXT, ejercicio_id TEXT, rir INTEGER,
+            progreso_reportado TEXT, fatiga_reportada INTEGER,
+            fecha TEXT DEFAULT (date('now')));
+
+        CREATE TABLE IF NOT EXISTS swaps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
+            original_id TEXT, nuevo_id TEXT, grupo TEXT, rol TEXT,
+            fecha TEXT DEFAULT (date('now')));
+
+        CREATE TABLE IF NOT EXISTS gamificacion (
+            user_id INTEGER PRIMARY KEY, xp_total INTEGER DEFAULT 0,
+            racha_actual INTEGER DEFAULT 0, racha_maxima INTEGER DEFAULT 0,
+            ultimo_entreno TEXT, nivel TEXT DEFAULT 'Principiante');
+
+        CREATE TABLE IF NOT EXISTS badges (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
+            badge TEXT, fecha TEXT DEFAULT (date('now')));
+
+        CREATE TABLE IF NOT EXISTS sesion_activa (
+            user_id INTEGER PRIMARY KEY, semana INTEGER, dia TEXT,
+            ej_idx INTEGER DEFAULT 0, fase TEXT DEFAULT 'ejercicio',
+            updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+
+        CREATE TABLE IF NOT EXISTS peso_flow (
+            user_id INTEGER PRIMARY KEY, semana INTEGER, dia TEXT,
+            ejercicios TEXT, idx INTEGER DEFAULT 0,
+            updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+
+        CREATE TABLE IF NOT EXISTS milestones (
+            user_id INTEGER PRIMARY KEY, semana_max INTEGER DEFAULT 0);
+
+        CREATE TABLE IF NOT EXISTS prioridad_bloques (
+            user_id INTEGER, grupo TEXT, semana INTEGER,
+            prioridad INTEGER DEFAULT 0,
+            PRIMARY KEY (user_id, grupo, semana));
+
+        CREATE TABLE IF NOT EXISTS sesion_ambiente (
+            user_id INTEGER PRIMARY KEY, ambiente TEXT DEFAULT 'gym');
+
+        CREATE TABLE IF NOT EXISTS login_tokens (
+            token TEXT PRIMARY KEY, user_id INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            used INTEGER DEFAULT 0);
+
+        CREATE TABLE IF NOT EXISTS analisis_historial (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL,
+            fecha TEXT NOT NULL, texto TEXT NOT NULL,
+            tipo TEXT DEFAULT 'nocturno');
+
+        CREATE TABLE IF NOT EXISTS pesajes (
+            Fecha TEXT PRIMARY KEY, Timestamp INTEGER UNIQUE,
+            Peso_kg REAL, Grasa_Porcentaje REAL, Agua REAL,
+            Musculo_Pct REAL, Musculo_kg REAL, BMR INTEGER, VisFat REAL,
+            BMI REAL, EdadMetabolica INTEGER, FatFreeWeight REAL,
+            Proteina REAL, MasaOsea REAL);
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_pesajes_ts ON pesajes(Timestamp);
+        CREATE INDEX IF NOT EXISTS idx_pesajes_fecha ON pesajes(Fecha);
+
+        CREATE TABLE IF NOT EXISTS historico_dietas (
+            fecha TEXT PRIMARY KEY, score_comp INTEGER, estado_mimo TEXT,
+            kcal_mult REAL, calorias INTEGER, proteina INTEGER,
+            carbs INTEGER, grasas INTEGER, dieta_html TEXT, delta_peso REAL);
+
+        CREATE TABLE IF NOT EXISTS config_nutricion (
+            clave TEXT PRIMARY KEY, valor TEXT);
+        """)
+        conn.execute("INSERT OR IGNORE INTO config_nutricion (clave, valor) VALUES ('kcal_mult','1.0')")
     logger.info("DB inicializada: %s", DB_PATH)
 
+# ── GYM ───────────────────────────────────────────────────────────────────────
 
-# ─── USUARIOS Y PERFIL ────────────────────────────────────────────────────────
+def get_allowed_users():
+    return {r["user_id"] for r in fetchall("SELECT user_id FROM allowed_users WHERE activo=1")}
 
-def get_allowed_users() -> set[int]:
-    rows = fetchall("SELECT user_id FROM allowed_users WHERE activo=1")
-    return {r["user_id"] for r in rows}
+def add_allowed_user(user_id):
+    execute("INSERT OR IGNORE INTO allowed_users (user_id, activo) VALUES (?,1)", (user_id,))
 
-
-def add_allowed_user(user_id: int) -> None:
-    execute("INSERT OR REPLACE INTO allowed_users (user_id, activo) VALUES (?,1)", (user_id,))
-
-
-def upsert_perfil(user_id: int, **kwargs) -> None:
-    cols  = [k for k in kwargs if k in (
-        "nombre","genero","nivel","objetivo","limitaciones",
-        "dias","duracion_min","ambiente_preferido",
-        "hora_recordatorio","anos_entrenando",
-    )]
-    if not cols:
-        return
-    sets  = ", ".join(f"{c}=?" for c in cols)
-    vals  = [kwargs[c] for c in cols]
-    with get_db() as conn:
-        conn.execute("INSERT OR IGNORE INTO usuarios (user_id) VALUES (?)", (user_id,))
-        conn.execute(f"UPDATE usuarios SET {sets} WHERE user_id=?", (*vals, user_id))
-
-
-def get_perfil(user_id: int) -> dict:
+def get_perfil(user_id):
     row = fetchone("SELECT * FROM usuarios WHERE user_id=?", (user_id,))
-    if not row:
-        return {"nivel": "principiante", "objetivo": "general", "limitaciones": "ninguna",
-                "dias": 3, "duracion_min": 60, "genero": "mujer", "ambiente_preferido": "gym"}
-    return dict(row)
+    return dict(row) if row else {}
 
+def upsert_perfil(user_id, **kwargs):
+    perfil = get_perfil(user_id) or {}
+    perfil.update(kwargs)
+    perfil["user_id"] = user_id
+    cols   = ", ".join(perfil.keys())
+    pholds = ", ".join(["?"] * len(perfil))
+    sets   = ", ".join(f"{k}=excluded.{k}" for k in perfil if k != "user_id")
+    execute(f"INSERT INTO usuarios ({cols}) VALUES ({pholds}) ON CONFLICT(user_id) DO UPDATE SET {sets}",
+            tuple(perfil.values()))
 
-def get_estado(user_id: int) -> tuple[int, str]:
+def get_estado(user_id):
     row = fetchone("SELECT semana, dia FROM estado WHERE user_id=?", (user_id,))
-    return (row["semana"], row["dia"]) if row else (1, "pendiente")
+    return (row["semana"], row["dia"]) if row else (1, "lunes")
 
+def upsert_estado(user_id, semana, dia):
+    execute("INSERT INTO estado (user_id,semana,dia) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET semana=?,dia=?",
+            (user_id, semana, dia, semana, dia))
 
-def upsert_estado(user_id: int, semana: int, dia: str, **kwargs) -> None:
-    obj = kwargs.get("objetivo")
-    if obj:
-        execute(
-            "INSERT INTO estado (user_id, semana, dia, objetivo) VALUES (?,?,?,?) "
-            "ON CONFLICT(user_id) DO UPDATE SET semana=?, dia=?, objetivo=?",
-            (user_id, semana, dia, obj, semana, dia, obj),
-        )
-    else:
-        execute(
-            "INSERT INTO estado (user_id, semana, dia) VALUES (?,?,?) "
-            "ON CONFLICT(user_id) DO UPDATE SET semana=?, dia=?",
-            (user_id, semana, dia, semana, dia),
-        )
+def has_plan(user_id):
+    row = fetchone("SELECT COUNT(*) as n FROM rutinas WHERE user_id=?", (user_id,))
+    return bool(row and row["n"] > 0)
 
+def clear_plan(user_id, keep_swaps=True):
+    for tbl in ["rutinas","progreso","estado","sesion_activa","peso_flow"]:
+        execute(f"DELETE FROM {tbl} WHERE user_id=?", (user_id,))
 
-def has_plan(user_id: int) -> bool:
-    row = fetchone("SELECT 1 FROM rutinas WHERE user_id=? LIMIT 1", (user_id,))
-    return row is not None
-
-
-def clear_plan(user_id: int, keep_swaps: bool = False) -> None:
-    """Borra el plan. Los pesos (historial) siempre se conservan."""
-    with get_db() as conn:
-        for tabla in ("rutinas", "progreso", "prioridad_bloques", "sesion_ambiente", "peso_flow"):
-            conn.execute(f"DELETE FROM {tabla} WHERE user_id=?", (user_id,))
-        if not keep_swaps:
-            conn.execute("DELETE FROM swaps WHERE user_id=?", (user_id,))
-        conn.execute("DELETE FROM estado WHERE user_id=?", (user_id,))
-    # pesos se conservan siempre — son historial personal
-
-
-# ─── PLAN Y EJERCICIOS ────────────────────────────────────────────────────────
-
-def insert_plan(user_id: int, semanas: list[dict], swaps: list[dict], by_id: dict) -> int:
-    swap_map = {s["original_id"]: s["reemplazo_id"] for s in swaps}
-    total = 0
+def insert_plan(user_id, semanas, swaps, by_id):
+    clear_plan(user_id)
+    swap_map = {s["original_id"]: s["nuevo_id"] for s in swaps if s.get("nuevo_id")}
+    n = 0
     with get_db() as conn:
         for sem in semanas:
-            sem_num = sem.get("semana", 1)
-            for d in sem.get("dias", []):
-                dia   = d.get("dia", "")
-                grupo = d.get("grupo", "general")
-                for e in d.get("ejercicios", []):
-                    eid   = e.get("ejercicio_id", "")
-                    eid   = swap_map.get(eid, eid)
-                    ej_obj = by_id.get(eid)
-                    conn.execute("""
-                        INSERT INTO rutinas
-                        (user_id, semana, dia, grupo, ejercicio_id, ejercicio,
-                         patron, orden, series, reps, notas, emg_score)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-                    """, (
-                        user_id, sem_num, dia, grupo, eid,
-                        ej_obj.nombre if ej_obj else e.get("ejercicio", eid),
-                        ej_obj.patron if ej_obj else e.get("patron", ""),
-                        e.get("orden", 1),
-                        e.get("series", 3),
-                        str(e.get("reps", "10")),
-                        e.get("notas", "")[:100],
-                        ej_obj.emg_score if ej_obj else 1,
-                    ))
-                    total += 1
-    return total
+            for dia_obj in sem["dias"]:
+                dia = dia_obj["dia"]
+                for orden, ej in enumerate(dia_obj["ejercicios"]):
+                    eid = swap_map.get(ej.get("id",""), ej.get("id",""))
+                    obj = by_id.get(eid)
+                    if not obj: continue
+                    conn.execute("""INSERT INTO rutinas
+                        (user_id,semana,dia,orden,ejercicio_id,ejercicio,patron,grupo,rol,series,reps,notas,emg_score,completado)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0)""",
+                        (user_id, sem["semana"], dia, orden,
+                         obj.id, obj.nombre, obj.patron, obj.grupo, obj.rol,
+                         ej.get("series",3), ej.get("reps","8-10"), obj.cue, obj.emg_score))
+                    n += 1
+    return n
 
+def get_ejercicios_dia(user_id, semana, dia):
+    return [dict(r) for r in fetchall(
+        "SELECT * FROM rutinas WHERE user_id=? AND semana=? AND dia=? ORDER BY orden",
+        (user_id, semana, dia))]
 
-def get_ejercicios_dia(user_id: int, semana: int, dia: str) -> list[dict]:
-    rows = fetchall("""
-        SELECT r.id, r.ejercicio_id, r.ejercicio, r.series, r.reps,
-               r.notas, r.completado, r.patron, r.grupo, r.orden, r.emg_score
-        FROM rutinas r
-        WHERE r.user_id=? AND r.semana=? AND r.dia=?
-        ORDER BY r.orden
-    """, (user_id, semana, dia))
-    return [dict(r) for r in rows]
+def get_dias_semana(user_id, semana):
+    return [r["dia"] for r in fetchall(
+        "SELECT DISTINCT dia FROM rutinas WHERE user_id=? AND semana=? ORDER BY id",
+        (user_id, semana))]
 
+def rutina_completa(user_id, semana, dia):
+    rows = fetchall("SELECT completado FROM rutinas WHERE user_id=? AND semana=? AND dia=?",
+                    (user_id, semana, dia))
+    return bool(rows) and all(r["completado"] for r in rows)
 
-def get_dias_semana(user_id: int, semana: int) -> list[str]:
-    rows = fetchall("""
-        SELECT DISTINCT dia FROM rutinas
-        WHERE user_id=? AND semana=?
-        ORDER BY CASE dia
-            WHEN 'lunes'    THEN 1 WHEN 'martes'   THEN 2
-            WHEN 'miercoles' THEN 3 WHEN 'jueves'   THEN 4
-            WHEN 'viernes'  THEN 5 WHEN 'sabado'   THEN 6
-            WHEN 'domingo'  THEN 7 ELSE 8 END
-    """, (user_id, semana))
-    return [r["dia"] for r in rows]
-
-
-def toggle_ejercicio(user_id: int, semana: int, dia: str, ejercicio_id: str) -> bool:
-    row = fetchone(
-        "SELECT completado FROM rutinas WHERE user_id=? AND semana=? AND dia=? AND ejercicio_id=?",
-        (user_id, semana, dia, ejercicio_id),
-    )
-    nuevo = 0 if (row and row["completado"]) else 1
-    execute(
-        "UPDATE rutinas SET completado=? WHERE user_id=? AND semana=? AND dia=? AND ejercicio_id=?",
-        (nuevo, user_id, semana, dia, ejercicio_id),
-    )
-    return bool(nuevo)
-
-
-def rutina_completa(user_id: int, semana: int, dia: str) -> bool:
-    row = fetchone("""
-        SELECT COUNT(*) as total, SUM(completado) as hechos
-        FROM rutinas WHERE user_id=? AND semana=? AND dia=?
-    """, (user_id, semana, dia))
-    return bool(row and row["total"] and int(row["total"] or 0) == int(row["hechos"] or 0))
-
-
-def semana_completa(user_id: int, semana: int) -> bool:
+def avanzar_dia(user_id, semana, dia_actual, max_semana=4):
     dias = get_dias_semana(user_id, semana)
-    return all(rutina_completa(user_id, semana, d) for d in dias) if dias else False
-
-
-def avanzar_dia(user_id: int, semana: int, dia: str, max_semana: int = 4) -> tuple[int, str]:
-    dias = get_dias_semana(user_id, semana)
-    if not dias:
-        return semana, "fin"
-    try:
-        idx = dias.index(dia)
-    except ValueError:
-        return semana, dias[0]
-    if idx + 1 < len(dias):
-        return semana, dias[idx + 1]
+    if dia_actual in dias:
+        idx = dias.index(dia_actual)
+        if idx + 1 < len(dias):
+            return semana, dias[idx+1]
     if semana < max_semana:
-        nueva_sem   = semana + 1
-        dias_nuevos = get_dias_semana(user_id, nueva_sem)
-        return (nueva_sem, dias_nuevos[0]) if dias_nuevos else (nueva_sem + 1, "fin")
-    return semana + 1, "fin"
+        nueva = semana + 1
+        dias_nueva = get_dias_semana(user_id, nueva)
+        if dias_nueva:
+            return nueva, dias_nueva[0]
+    return semana, dia_actual
 
-
-# ─── PROGRESO ─────────────────────────────────────────────────────────────────
-
-def save_progreso_sesion(
-    user_id: int, semana: int, dia: str,
-    rir=None, progresion=None, fatiga=None, ejercicio_id=None
-) -> None:
-    row = fetchone(
-        "SELECT id FROM progreso WHERE user_id=? AND semana=? AND dia=? AND ejercicio_id IS NULL LIMIT 1",
-        (user_id, semana, dia),
-    )
-    if row:
-        with get_db() as conn:
-            if rir is not None:
-                conn.execute("UPDATE progreso SET rir_reportado=? WHERE id=?",     (rir, row["id"]))
-            if progresion is not None:
-                conn.execute("UPDATE progreso SET progreso_reportado=? WHERE id=?", (progresion, row["id"]))
-            if fatiga is not None:
-                conn.execute("UPDATE progreso SET fatiga_reportada=? WHERE id=?",  (fatiga, row["id"]))
-    else:
-        execute("""
-            INSERT INTO progreso (user_id,semana,dia,ejercicio_id,rir_reportado,progreso_reportado,fatiga_reportada)
-            VALUES (?,?,?,?,?,?,?)
-        """, (user_id, semana, dia, ejercicio_id, rir, progresion, fatiga))
-
-
-def get_historial_sesiones(user_id: int, grupo: str | None = None, limit: int = 6) -> list[dict]:
-    if grupo:
-        rows = fetchall("""
-            SELECT p.semana, p.dia, p.rir_reportado, p.progreso_reportado, p.fatiga_reportada
-            FROM progreso p
-            WHERE p.user_id=? AND p.fatiga_reportada IS NOT NULL
-              AND EXISTS (SELECT 1 FROM rutinas r WHERE r.user_id=p.user_id
-                         AND r.semana=p.semana AND r.dia=p.dia AND r.grupo=?)
-            ORDER BY p.semana DESC, p.id DESC LIMIT ?
-        """, (user_id, grupo, limit))
-    else:
-        rows = fetchall("""
-            SELECT semana, dia, rir_reportado, progreso_reportado, fatiga_reportada
-            FROM progreso WHERE user_id=? AND fatiga_reportada IS NOT NULL
-            ORDER BY semana DESC, id DESC LIMIT ?
-        """, (user_id, limit))
-    return [dict(r) for r in rows]
-
-
-def get_stats(user_id: int) -> dict:
-    total = fetchone("SELECT COUNT(*) as n FROM rutinas WHERE user_id=? AND completado=1", (user_id,))
-    ruts  = fetchone("""
-        SELECT COUNT(*) as n FROM (
-            SELECT semana, dia FROM rutinas WHERE user_id=? AND completado=1
-            GROUP BY semana, dia
-            HAVING COUNT(*) = (
-                SELECT COUNT(*) FROM rutinas r2
-                WHERE r2.user_id=? AND r2.semana=rutinas.semana AND r2.dia=rutinas.dia
-            )
-        )
-    """, (user_id, user_id))
-    return {
-        "total_ejercicios":  int(total["n"] if total else 0),
-        "rutinas_completas": int(ruts["n"]  if ruts  else 0),
-    }
-
-
-
-# ─── REGISTRO DE PESOS ────────────────────────────────────────────────────────
-
-def save_peso(user_id: int, ejercicio_id: str, semana: int, dia: str,
-              peso_lbs: float | None, series: int | None = None,
-              reps: str | None = None) -> None:
-    execute("""
-        INSERT INTO pesos (user_id, ejercicio_id, semana, dia, peso_lbs, series_hechas, reps_hechas)
-        VALUES (?,?,?,?,?,?,?)
-    """, (user_id, ejercicio_id, semana, dia, peso_lbs, series, reps))
-
-
-def get_ultimo_peso(user_id: int, ejercicio_id: str) -> dict | None:
-    row = fetchone("""
-        SELECT peso_lbs, series_hechas, reps_hechas, semana, dia, fecha
-        FROM pesos
-        WHERE user_id=? AND ejercicio_id=?
-        ORDER BY fecha DESC LIMIT 1
-    """, (user_id, ejercicio_id))
+def get_ultimo_peso(user_id, ejercicio_id):
+    row = fetchone("SELECT peso_lbs,series_hechas,reps_hechas,fecha FROM pesos WHERE user_id=? AND ejercicio_id=? ORDER BY semana DESC, id DESC LIMIT 1",
+                   (user_id, ejercicio_id))
     return dict(row) if row else None
 
+def get_peso_sugerido(user_id, ejercicio_id):
+    u = get_ultimo_peso(user_id, ejercicio_id)
+    if not u or not u.get("peso_lbs"): return None
+    return round(float(u["peso_lbs"]) + 5.0, 1)
 
-def get_historial_peso(user_id: int, ejercicio_id: str, limit: int = 8) -> list[dict]:
-    rows = fetchall("""
-        SELECT peso_lbs, series_hechas, reps_hechas, semana, fecha
-        FROM pesos
-        WHERE user_id=? AND ejercicio_id=?
-        ORDER BY fecha DESC LIMIT ?
-    """, (user_id, ejercicio_id, limit))
-    return [dict(r) for r in rows]
+def save_peso(user_id, ejercicio_id, semana, dia, peso_lbs, series=None, reps=None):
+    execute("INSERT INTO pesos (user_id,ejercicio_id,semana,dia,peso_lbs,series_hechas,reps_hechas) VALUES (?,?,?,?,?,?,?)",
+            (user_id, ejercicio_id, semana, dia, peso_lbs, series, reps))
 
+def get_progresion_ejercicio(user_id, ejercicio_id):
+    return [dict(r) for r in fetchall(
+        "SELECT semana, MAX(peso_lbs) as mejor_peso, series_hechas, reps_hechas FROM pesos WHERE user_id=? AND ejercicio_id=? AND peso_lbs IS NOT NULL GROUP BY semana ORDER BY semana ASC",
+        (user_id, ejercicio_id))]
 
-def get_peso_sugerido(user_id: int, ejercicio_id: str) -> str:
-    """
-    Calcula el peso sugerido para la próxima sesión.
-    Regla: si RIR reportado >= 2 la semana pasada, sube 2.5-5%.
-    Si no hay historial, devuelve string vacío.
-    """
-    ultimo = get_ultimo_peso(user_id, ejercicio_id)
-    if not ultimo or not ultimo["peso_lbs"]:
-        return ""
-    peso = float(ultimo["peso_lbs"])
-
-    # Buscar RIR de esa sesión
-    row_rir = fetchone("""
-        SELECT rir_reportado FROM progreso
-        WHERE user_id=? AND semana=? AND dia=?
-        ORDER BY id DESC LIMIT 1
-    """, (user_id, ultimo["semana"], ultimo["dia"]))
-    rir = row_rir["rir_reportado"] if row_rir and row_rir["rir_reportado"] is not None else 2
-
-    if rir >= 3:
-        # Demasiado fácil — sube más
-        nuevo = round(peso * 1.05 / 5) * 5
-    elif rir <= 1:
-        # Muy difícil — mantén o sube poco
-        nuevo = round(peso * 1.025 / 2.5) * 2.5
-    else:
-        # RIR 2 — progresión estándar
-        nuevo = round(peso * 1.025 / 2.5) * 2.5
-
-    return f"{nuevo:.1f}".rstrip("0").rstrip(".")
-
-
-def get_usuarios_con_recordatorio(hora: str) -> list[int]:
-    """Retorna user_ids con hora_recordatorio == hora (formato 'HH:MM')."""
-    rows = fetchall("""
-        SELECT u.user_id FROM usuarios u
-        JOIN allowed_users a ON a.user_id = u.user_id
-        WHERE u.hora_recordatorio = ? AND a.activo = 1
-    """, (hora,))
-    return [r["user_id"] for r in rows]
-
-
-def get_progresiones_con_peso(user_id: int, semana: int) -> list[dict]:
-    """
-    Retorna ejercicios donde subió el peso vs semana anterior.
-    Para el resumen semanal con datos reales.
-    """
-    rows = fetchall("""
-        SELECT p.ejercicio_id, r.ejercicio,
-               p.peso_lbs as peso_actual, p.semana,
-               prev.peso_lbs as peso_anterior
-        FROM pesos p
-        JOIN rutinas r ON r.user_id = p.user_id AND r.ejercicio_id = p.ejercicio_id
-        LEFT JOIN pesos prev ON prev.user_id = p.user_id
-            AND prev.ejercicio_id = p.ejercicio_id
-            AND prev.semana = p.semana - 1
-        WHERE p.user_id = ? AND p.semana = ?
-            AND p.peso_lbs IS NOT NULL
-            AND (prev.peso_lbs IS NULL OR p.peso_lbs > prev.peso_lbs)
-        GROUP BY p.ejercicio_id
-        ORDER BY (p.peso_lbs - COALESCE(prev.peso_lbs, 0)) DESC
-    """, (user_id, semana))
-    return [dict(r) for r in rows]
-
-
-
-def get_progresion_ejercicio(user_id: int, ejercicio_id: str) -> list[dict]:
-    """
-    Mejor peso por semana para un ejercicio.
-    Usado para mostrar la gráfica de progresión.
-    """
-    rows = fetchall("""
-        SELECT semana,
-               MAX(peso_lbs) as mejor_peso,
-               series_hechas, reps_hechas
-        FROM pesos
-        WHERE user_id=? AND ejercicio_id=? AND peso_lbs IS NOT NULL
-        GROUP BY semana
-        ORDER BY semana ASC
-    """, (user_id, ejercicio_id))
-    return [dict(r) for r in rows]
-
-
-def get_ejercicios_con_historial(user_id: int) -> list[dict]:
-    """
-    Retorna ejercicios que tienen al menos 2 registros de peso.
-    Ordenados por grupo y EMG score.
-    """
-    rows = fetchall("""
-        SELECT p.ejercicio_id,
-               r.ejercicio,
-               r.grupo,
+def get_ejercicios_con_historial(user_id):
+    return [dict(r) for r in fetchall("""
+        SELECT p.ejercicio_id, r.ejercicio, r.grupo,
                COUNT(DISTINCT p.semana) as semanas_registradas,
-               MAX(p.peso_lbs) as peso_maximo,
-               MIN(p.peso_lbs) as peso_minimo
-        FROM pesos p
-        JOIN rutinas r ON r.user_id = p.user_id
-                       AND r.ejercicio_id = p.ejercicio_id
+               MAX(p.peso_lbs) as peso_maximo, MIN(p.peso_lbs) as peso_minimo
+        FROM pesos p JOIN rutinas r ON r.user_id=p.user_id AND r.ejercicio_id=p.ejercicio_id
         WHERE p.user_id=? AND p.peso_lbs IS NOT NULL
-        GROUP BY p.ejercicio_id
-        HAVING COUNT(DISTINCT p.semana) >= 1
-        ORDER BY r.grupo, MAX(p.peso_lbs) DESC
-    """, (user_id,))
-    return [dict(r) for r in rows]
+        GROUP BY p.ejercicio_id HAVING COUNT(DISTINCT p.semana)>=1
+        ORDER BY r.grupo, MAX(p.peso_lbs) DESC""", (user_id,))]
 
-
-def get_resumen_progresion(user_id: int) -> dict:
-    """
-    Resumen global: cuánto subió de peso en cada ejercicio
-    desde el primer registro hasta el último.
-    """
-    rows = fetchall("""
-        SELECT ejercicio_id,
-               MIN(peso_lbs) as primer_peso,
-               MAX(peso_lbs) as ultimo_peso,
-               MAX(semana)   as ultima_semana,
-               MIN(semana)   as primera_semana
-        FROM pesos
-        WHERE user_id=? AND peso_lbs IS NOT NULL
-        GROUP BY ejercicio_id
-        HAVING MAX(semana) > MIN(semana)   -- solo si hay progresión entre semanas
-        ORDER BY (MAX(peso_lbs) - MIN(peso_lbs)) DESC
-    """, (user_id,))
+def get_resumen_progresion(user_id):
+    rows = fetchall("""SELECT ejercicio_id, MIN(peso_lbs) as primer_peso, MAX(peso_lbs) as ultimo_peso,
+        MAX(semana) as ultima_semana, MIN(semana) as primera_semana
+        FROM pesos WHERE user_id=? AND peso_lbs IS NOT NULL GROUP BY ejercicio_id
+        HAVING MAX(semana)>MIN(semana) ORDER BY (MAX(peso_lbs)-MIN(peso_lbs)) DESC""", (user_id,))
     return {r["ejercicio_id"]: dict(r) for r in rows}
 
+def get_progresiones_con_peso(user_id, semana):
+    return [dict(r) for r in fetchall("""
+        SELECT p.ejercicio_id, r.ejercicio, r.grupo,
+               MAX(p.peso_lbs) as peso_actual,
+               (SELECT MAX(p2.peso_lbs) FROM pesos p2 WHERE p2.user_id=p.user_id AND p2.ejercicio_id=p.ejercicio_id AND p2.semana<p.semana) as peso_anterior
+        FROM pesos p JOIN rutinas r ON r.user_id=p.user_id AND r.ejercicio_id=p.ejercicio_id
+        WHERE p.user_id=? AND p.semana=? AND p.peso_lbs IS NOT NULL
+        GROUP BY p.ejercicio_id HAVING peso_actual>COALESCE(peso_anterior,0)
+        ORDER BY (peso_actual-COALESCE(peso_anterior,0)) DESC""", (user_id, semana))]
 
+def save_progreso_sesion(user_id, semana, dia, rir=2, progresion="si", fatiga=2):
+    execute("INSERT INTO progreso (user_id,semana,dia,rir,progreso_reportado,fatiga_reportada) VALUES (?,?,?,?,?,?)",
+            (user_id, semana, dia, rir, progresion, fatiga))
 
-# ─── LOGIN TOKENS (magic link) ────────────────────────────────────────────────
+def get_stats(user_id):
+    row = fetchone("SELECT COUNT(DISTINCT dia||semana) as rutinas_completas FROM progreso WHERE user_id=?", (user_id,))
+    return {"rutinas_completas": row["rutinas_completas"] if row else 0}
 
+def get_swaps(user_id):
+    return [dict(r) for r in fetchall("SELECT original_id, nuevo_id FROM swaps WHERE user_id=?", (user_id,))]
 
-def save_analisis(user_id: int, texto: str, tipo: str = "nocturno") -> None:
-    """Guarda un análisis de Gemini en el historial."""
-    from datetime import datetime
-    fecha = datetime.now().strftime("%Y-%m-%d")
-    execute("""
-        INSERT INTO analisis_historial (user_id, fecha, texto, tipo)
-        VALUES (?, ?, ?, ?)
-    """, (user_id, fecha, texto, tipo))
+def save_swap(user_id, original_id, nuevo_id, grupo, rol):
+    execute("INSERT INTO swaps (user_id,original_id,nuevo_id,grupo,rol) VALUES (?,?,?,?,?)",
+            (user_id, original_id, nuevo_id, grupo, rol))
 
-def create_login_token(user_id: int) -> str:
-    """Genera un token de un solo uso válido por 5 minutos."""
-    import secrets
-    token = secrets.token_urlsafe(32)
-    execute("""
-        INSERT INTO login_tokens (token, user_id)
-        VALUES (?, ?)
-    """, (token, user_id))
-    # Limpiar tokens viejos
-    execute("""
-        DELETE FROM login_tokens
-        WHERE created_at < datetime('now', '-5 minutes')
-    """)
-    return token
+def save_sesion_activa(user_id, semana, dia, ej_idx, fase="ejercicio"):
+    execute("INSERT INTO sesion_activa (user_id,semana,dia,ej_idx,fase) VALUES (?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET semana=?,dia=?,ej_idx=?,fase=?,updated=CURRENT_TIMESTAMP",
+            (user_id,semana,dia,ej_idx,fase,semana,dia,ej_idx,fase))
 
-
-def consume_login_token(token: str) -> int | None:
-    """
-    Valida y consume un token. Retorna user_id si válido, None si no.
-    Token válido: existe, no usado, creado hace menos de 5 minutos.
-    """
-    row = fetchone("""
-        SELECT user_id FROM login_tokens
-        WHERE token = ?
-          AND used = 0
-          AND created_at > datetime('now', '-5 minutes')
-    """, (token,))
-    if not row:
-        return None
-    execute("UPDATE login_tokens SET used=1 WHERE token=?", (token,))
-    return int(row["user_id"])
-
-# ─── SESIÓN ACTIVA (ejercicio por ejercicio) ──────────────────────────────────
-
-def save_sesion_activa(user_id: int, semana: int, dia: str,
-                       ej_idx: int, fase: str = "ejercicio") -> None:
-    execute("""
-        INSERT INTO sesion_activa (user_id, semana, dia, ej_idx, fase)
-        VALUES (?,?,?,?,?)
-        ON CONFLICT(user_id) DO UPDATE SET
-            semana=?, dia=?, ej_idx=?, fase=?, updated=CURRENT_TIMESTAMP
-    """, (user_id, semana, dia, ej_idx, fase,
-          semana, dia, ej_idx, fase))
-
-
-def get_sesion_activa(user_id: int) -> dict | None:
+def get_sesion_activa(user_id):
     row = fetchone("SELECT * FROM sesion_activa WHERE user_id=?", (user_id,))
     return dict(row) if row else None
 
-
-def clear_sesion_activa(user_id: int) -> None:
+def clear_sesion_activa(user_id):
     execute("DELETE FROM sesion_activa WHERE user_id=?", (user_id,))
 
-# ─── ESTADO DE FLUJO DE PESOS (persiste en DB, no en memoria) ─────────────────
-
-def save_peso_flow(user_id: int, semana: int, dia: str,
-                   ejercicios: list[str], idx: int) -> None:
+def save_peso_flow(user_id, semana, dia, ejercicios, idx):
     import json
-    execute("""
-        INSERT INTO peso_flow (user_id, semana, dia, ejercicios, idx)
-        VALUES (?,?,?,?,?)
-        ON CONFLICT(user_id) DO UPDATE SET semana=?, dia=?, ejercicios=?, idx=?, updated=CURRENT_TIMESTAMP
-    """, (user_id, semana, dia, json.dumps(ejercicios), idx,
-          semana, dia, json.dumps(ejercicios), idx))
+    ejs = json.dumps(ejercicios)
+    execute("INSERT INTO peso_flow (user_id,semana,dia,ejercicios,idx) VALUES (?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET semana=?,dia=?,ejercicios=?,idx=?,updated=CURRENT_TIMESTAMP",
+            (user_id,semana,dia,ejs,idx,semana,dia,ejs,idx))
 
-
-def get_peso_flow(user_id: int) -> dict | None:
+def get_peso_flow(user_id):
     import json
     row = fetchone("SELECT * FROM peso_flow WHERE user_id=?", (user_id,))
-    if not row:
-        return None
-    return {
-        "semana": row["semana"], "dia": row["dia"],
-        "ejercicios": json.loads(row["ejercicios"]),
-        "idx": row["idx"],
-    }
+    if not row: return None
+    d = dict(row)
+    try: d["ejercicios"] = json.loads(d["ejercicios"])
+    except: d["ejercicios"] = []
+    return d
 
-
-def clear_peso_flow(user_id: int) -> None:
+def clear_peso_flow(user_id):
     execute("DELETE FROM peso_flow WHERE user_id=?", (user_id,))
 
-# ─── SWAPS ────────────────────────────────────────────────────────────────────
+def create_login_token(user_id):
+    import secrets
+    token = secrets.token_urlsafe(32)
+    execute("INSERT INTO login_tokens (token,user_id) VALUES (?,?)", (token, user_id))
+    execute("DELETE FROM login_tokens WHERE created_at < datetime('now','-5 minutes')")
+    return token
 
-def get_swaps(user_id: int) -> list[dict]:
-    rows = fetchall("SELECT original_id, reemplazo_id, grupo, rol FROM swaps WHERE user_id=?", (user_id,))
-    return [dict(r) for r in rows]
+def consume_login_token(token):
+    row = fetchone("SELECT user_id FROM login_tokens WHERE token=? AND used=0 AND created_at > datetime('now','-5 minutes')", (token,))
+    if not row: return None
+    execute("UPDATE login_tokens SET used=1 WHERE token=?", (token,))
+    return int(row["user_id"])
 
+def save_analisis(user_id, texto, tipo="nocturno"):
+    from datetime import datetime
+    execute("INSERT INTO analisis_historial (user_id,fecha,texto,tipo) VALUES (?,?,?,?)",
+            (user_id, datetime.now().strftime("%Y-%m-%d"), texto, tipo))
 
-def save_swap(user_id: int, original: str, reemplazo: str, grupo: str, rol: str) -> None:
-    execute(
-        "INSERT INTO swaps (user_id, original_id, reemplazo_id, grupo, rol) VALUES (?,?,?,?,?)",
-        (user_id, original, reemplazo, grupo, rol),
-    )
+def get_usuarios_con_recordatorio(hora):
+    return [r["user_id"] for r in fetchall(
+        "SELECT u.user_id FROM usuarios u JOIN allowed_users a ON a.user_id=u.user_id WHERE u.hora_recordatorio=? AND a.activo=1",
+        (hora,))]
 
+# ── CUERPO ────────────────────────────────────────────────────────────────────
 
-# ─── MILESTONES ───────────────────────────────────────────────────────────────
-
-def check_milestone(user_id: int, key: str) -> bool:
-    row = fetchone("SELECT 1 FROM milestones WHERE user_id=? AND key=?", (user_id, key))
-    if row:
-        return False
-    execute("INSERT OR IGNORE INTO milestones (user_id, key) VALUES (?,?)", (user_id, key))
-    return True
-
-
-# ─── AJUSTE SERIES ────────────────────────────────────────────────────────────
-
-def adjust_series(user_id: int, semana: int, dia: str, delta: int, solo_accesorios: bool = False) -> None:
-    filtro = "AND orden > 1" if solo_accesorios else ""
+def guardar_pesaje(m):
     with get_db() as conn:
-        rows = conn.execute(f"""
-            SELECT id, series FROM rutinas
-            WHERE user_id=? AND semana=? AND dia=? {filtro}
-            AND ejercicio_id NOT LIKE 'CAR%'
-        """, (user_id, semana, dia)).fetchall()
-        for row in rows:
-            conn.execute(
-                "UPDATE rutinas SET series=? WHERE id=?",
-                (max(2, min(6, int(row["series"] or 3) + delta)), row["id"]),
-            )
+        cur = conn.execute("""INSERT OR IGNORE INTO pesajes
+            (Fecha,Timestamp,Peso_kg,Grasa_Porcentaje,Agua,Musculo_Pct,Musculo_kg,BMR,VisFat,BMI,EdadMetabolica,FatFreeWeight,Proteina,MasaOsea)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (m["fecha_str"],m["time_stamp"],m["peso"],m["grasa"],m["agua"],
+             m["musculo_pct"],m.get("masa_muscular_kg"),m.get("bmr"),
+             m.get("grasa_visceral"),m.get("bmi"),m.get("edad_metabolica"),
+             m.get("fat_free_weight"),m.get("proteina"),m.get("masa_osea")))
+        return cur.rowcount == 1
+
+def get_ultimo_pesaje():
+    row = fetchone("SELECT * FROM pesajes ORDER BY Fecha DESC LIMIT 1")
+    return dict(row) if row else None
+
+def get_pesaje_anterior(fecha_actual):
+    row = fetchone("SELECT * FROM pesajes WHERE Fecha < ? ORDER BY Fecha DESC LIMIT 1", (fecha_actual,))
+    return dict(row) if row else None
+
+def get_historial_pesajes(dias=90):
+    return [dict(r) for r in fetchall(
+        "SELECT * FROM pesajes WHERE Fecha >= date('now', ?) ORDER BY Fecha ASC",
+        (f"-{dias} days",))]
+
+def get_tendencia_7d(fecha_actual):
+    row = fetchone("""SELECT AVG(Peso_kg) as peso_prom, AVG(Grasa_Porcentaje) as grasa_prom, AVG(Musculo_Pct) as musculo_prom
+        FROM pesajes WHERE Fecha < ? AND Fecha >= date(?, '-7 days')""", (fecha_actual, fecha_actual))
+    return dict(row) if row else None
+
+def get_multiplicador():
+    row = fetchone("SELECT valor FROM config_nutricion WHERE clave='kcal_mult'")
+    return float(row["valor"]) if row else 1.0
+
+def set_multiplicador(valor):
+    execute("INSERT INTO config_nutricion (clave,valor) VALUES ('kcal_mult',?) ON CONFLICT(clave) DO UPDATE SET valor=?",
+            (str(valor), str(valor)))
+
+def get_ultima_dieta():
+    row = fetchone("SELECT * FROM historico_dietas ORDER BY fecha DESC LIMIT 1")
+    return dict(row) if row else None
+
+def guardar_dieta(fecha, score, estado_mimo, kcal_mult, calorias, proteina, carbs, grasas, dieta_json, delta_peso=None):
+    execute("""INSERT INTO historico_dietas (fecha,score_comp,estado_mimo,kcal_mult,calorias,proteina,carbs,grasas,dieta_html,delta_peso)
+        VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(fecha) DO UPDATE SET
+        score_comp=?,estado_mimo=?,kcal_mult=?,calorias=?,proteina=?,carbs=?,grasas=?,dieta_html=?,delta_peso=?""",
+        (fecha,score,estado_mimo,kcal_mult,calorias,proteina,carbs,grasas,dieta_json,delta_peso,
+         score,estado_mimo,kcal_mult,calorias,proteina,carbs,grasas,dieta_json,delta_peso))
+
+def job_ya_ejecutado_hoy():
+    from datetime import datetime
+    hoy = datetime.now().strftime("%Y-%m-%d")
+    return fetchone("SELECT fecha FROM historico_dietas WHERE fecha=?", (hoy,)) is not None
