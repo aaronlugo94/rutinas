@@ -35,9 +35,10 @@ async def handler_comando_desconocido(update: Update, context: ContextTypes.DEFA
     if not await check_auth(update):
         return
     uid = update.effective_user.id
+    nombre = update.effective_user.first_name or ""
+    texto  = await _texto_menu_principal(uid, nombre)
     await update.message.reply_text(
-        "No conozco ese comando 🤷\n\n¿Qué quieres hacer?",
-        reply_markup=_kb_ayuda_contextual(uid),
+        texto, reply_markup=ren.MENU_PRINCIPAL, parse_mode="HTML",
     )
 
 
@@ -86,44 +87,64 @@ async def check_auth(update: Update) -> bool:
 # ── COMANDOS ──────────────────────────────────────────────────────────────────
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Punto de entrada único. Manda UNA ventana con el menú principal.
+    Todo lo demás ocurre dentro de esa ventana via edit_message_text.
+    """
     if not await check_auth(update):
         return
     uid    = update.effective_user.id
     nombre = update.effective_user.first_name or ""
+
     if not db.has_plan(uid):
         await _onboarding_inicio(update, nombre)
         return
 
-    semana, dia = db.get_estado(uid)
-    perfil      = db.get_perfil(uid)
-    stats     = db.get_stats(uid)
-    racha     = gam.get_racha(uid)
-    grupo_hoy = _grupo_del_dia(uid, semana, dia)
-    saludo    = p.saludo_inicio(
-        nombre          = nombre,
-        racha           = racha,
-        genero          = perfil.get("genero", "mujer"),
-        grupo_hoy       = grupo_hoy,
-        rutinas_totales = stats["rutinas_completas"],
+    # Una sola ventana — el menú principal
+    texto = await _texto_menu_principal(uid, nombre)
+    await update.message.reply_text(
+        texto,
+        reply_markup=ren.MENU_PRINCIPAL,
+        parse_mode="HTML",
+        disable_web_page_preview=True,
     )
+
+
+async def _texto_menu_principal(uid: int, nombre: str = "") -> str:
+    """Texto del menú principal — estado rápido de los 3 pilares."""
+    racha   = gam.get_racha(uid)
+    semana, dia = db.get_estado(uid)
+    grupo_hoy   = _grupo_del_dia(uid, semana, dia)
+
+    # Racha
     if racha >= 7:
-        racha_str = f"\n🔥 <b>{racha} días seguidos</b> — no lo rompas hoy."
+        racha_str = f"🔥 <b>{racha} días de racha</b>"
     elif racha >= 3:
-        racha_str = f"\n🔥 {racha} días seguidos."
+        racha_str = f"🔥 {racha} días de racha"
     elif racha == 1:
-        racha_str = "\n⚡ Primer día de racha."
+        racha_str = "⚡ Primer día de racha"
     else:
         racha_str = ""
-    header = f"{saludo}{racha_str}\n\n"
 
-    sesion = db.get_sesion_activa(uid)
-    if sesion and sesion["semana"] == semana and sesion["dia"] == dia:
-        texto, teclado = ren.render_ejercicio(uid, semana, dia, sesion["ej_idx"])
-    else:
-        texto, teclado = ren.rutina_preview(uid, semana, dia)
-    await update.message.reply_text(
-        header + texto,
-        reply_markup=teclado, parse_mode="HTML", disable_web_page_preview=True,
+    # Hoy
+    from catalog import GRUPO_ICON
+    icon = GRUPO_ICON.get(grupo_hoy, "💪") if grupo_hoy else "🌿"
+    hoy_str = f"{icon} Hoy: {grupo_hoy.upper()}" if grupo_hoy else "🌿 Hoy: Recovery"
+
+    # Cuerpo — último pesaje
+    import cuerpo as corp
+    resumen = corp.get_resumen_cuerpo()
+    cuerpo_str = ""
+    if resumen:
+        cuerpo_str = f"\n⚖️ Score: {resumen['score']}/100 · {resumen['grasa_pct']}% grasa"
+
+    n = nombre.split()[0] if nombre else ""
+    saludo = f"Hola {n} 👋\n" if n else ""
+
+    return (
+        f"{saludo}"
+        f"{racha_str}{'  ·  ' if racha_str else ''}{hoy_str}"
+        f"{cuerpo_str}"
     )
 
 
@@ -249,9 +270,9 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "📋 Plan — Ver las 4 semanas\n\n"
 
         "<b>Comandos</b>\n"
-        "/start — Ver mi rutina de hoy\n"
+        "/start — Menú principal\n"
         "/login — Entrar a la web app\n"
-        "/reset_plan — Crear nuevo plan\n\n"
+        "/reset_plan — Crear nuevo plan de gym\n\n"
 
         "<b>¿Qué es RIR?</b>\n"
         "Reps In Reserve — cuántas reps te sobraban\n"
@@ -304,33 +325,17 @@ async def cmd_adduser(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 async def _onboarding_inicio(update: Update, nombre: str = "") -> None:
     n = nombre.split()[0] if nombre else ""
     saludo = f"Hola {n}. " if n else ""
-    texto = (
-        f"<b>GymCoach</b>\n\n"
-        f"{saludo}Plan de entrenamiento basado en ciencia. "
-        f"Se ajusta cada semana según cómo te fue.\n\n"
-
-        "<b>Cómo funciona</b>\n"
-        "1. Abre la rutina del día\n"
-        "2. Entrena todos los ejercicios\n"
-        "3. Toca <b>✅ Terminé</b> al acabar\n"
-        "4. Registra cuántas lbs usaste\n"
-        "   → La siguiente semana el bot te dice cuánto subir\n\n"
-
-        "<b>Botones en la rutina</b>\n"
-        "🔄 — Cambiar ese ejercicio por otro\n"
-        "✅ Terminé — Cerrar la sesión\n"
-        "📊 Stats — Tu progreso\n\n"
-
-        "¿Listo? 6 preguntas y tu plan está listo en segundos."
-    )
     uid = update.effective_user.id
-    from renderer import WEB_URL
-    texto += (
-        f"\n\n🌐 <b>Para entrar a la web:</b>\n"
-        f"Escribe /login y toca el botón que aparece."
+    texto = (
+        f"<b>Coach</b> — tu entrenador personal\n\n"
+        f"{saludo}Tres cosas en un solo lugar:\n"
+        f"💪 <b>Gym</b> — rutina diaria y progreso de pesos\n"
+        f"⚖️ <b>Cuerpo</b> — composición corporal desde tu báscula\n"
+        f"🥗 <b>Nutrición</b> — plan semanal calculado con IA\n\n"
+        f"Empieza por tu plan de entrenamiento 👇"
     )
     teclado = InlineKeyboardMarkup([[
-        InlineKeyboardButton("💪 Crear mi plan", callback_data="obj:inicio")
+        InlineKeyboardButton("💪 Crear mi plan de gym", callback_data="obj:inicio")
     ]])
     await update.message.reply_text(texto, reply_markup=teclado, parse_mode="HTML")
 
@@ -525,10 +530,13 @@ async def handler_texto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
     # ── FIN FLUJO PESOS ─────────────────────────────────────────────────────
 
-    # Sin Gemini — respuesta directa con botones contextuales
+    # Sin Gemini — menú principal en mensaje nuevo (no hay ventana previa)
+    nombre = update.effective_user.first_name or ""
+    texto  = await _texto_menu_principal(uid, nombre)
     await update.message.reply_text(
-        "¿Qué quieres hacer? 👇",
-        reply_markup=_kb_ayuda_contextual(uid),
+        texto,
+        reply_markup=ren.MENU_PRINCIPAL,
+        parse_mode="HTML",
     )
 
 
@@ -728,15 +736,119 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         accion = data.split(":")[1]
         await query.answer()
 
+        if accion == "main":
+            await query.answer()
+            uid    = query.from_user.id
+            nombre = query.from_user.first_name or ""
+            texto  = await _texto_menu_principal(uid, nombre)
+            await query.edit_message_text(
+                texto,
+                reply_markup=ren.MENU_PRINCIPAL,
+                parse_mode="HTML",
+            )
+            return
+
+        if accion == "cuerpo":
+            await query.answer()
+            import cuerpo as corp
+            resumen = corp.get_resumen_cuerpo()
+            if not resumen:
+                await query.edit_message_text(
+                    "⚖️ <b>Sin pesajes aún</b>\n\n"
+                    "Pésate mañana en ayunas (6-9am) y el sistema lo detecta automáticamente.\n\n"
+                    "Mientras tanto puedes ver tus métricas en la web 👇",
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🌐 Ver en la web →", url=ren.WEB_URL)],
+                        [InlineKeyboardButton("🏠 Menú", callback_data="menu:main")],
+                    ])
+                )
+                return
+
+            score     = resumen["score"]
+            desc      = resumen["score_desc"]
+            grasa     = resumen["grasa_pct"]
+            musculo   = resumen["musculo_pct"]
+            peso      = resumen["peso_kg"]
+            visceral  = resumen["visceral"]
+            mimo      = resumen.get("estado_mimo") or "—"
+            eta       = resumen.get("semanas_eta", 0)
+            kg_faltan = resumen.get("kg_a_perder", 0)
+
+            mimo_emoji = {"RECOMPOSICION":"🟣","CUTTING_LIMPIO":"🟢",
+                          "CATABOLISMO":"🔴","ESTANCAMIENTO":"🟡"}.get(mimo,"⚪")
+
+            msg = (
+                f"⚖️ <b>Composición corporal</b>\n"
+                f"<i>{resumen['fecha']}</i>\n\n"
+                f"<b>Score:</b> {score}/100 — {desc}\n"
+                f"<b>Estado:</b> {mimo_emoji} {mimo.replace('_',' ')}\n\n"
+                f"<b>Peso:</b> {peso} kg\n"
+                f"<b>Grasa:</b> {grasa}%\n"
+                f"<b>Músculo:</b> {musculo}%\n"
+                f"<b>Visceral:</b> {visceral}\n\n"
+            )
+            if kg_faltan and kg_faltan > 0:
+                msg += f"<b>Meta 22% grasa:</b> faltan {kg_faltan} kg (~{eta} semanas)\n\n"
+            msg += "<i>Gráfica de tendencia y más detalles en la web 👇</i>"
+
+            await query.edit_message_text(
+                msg, parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🌐 Ver tendencia →", url=f"{ren.WEB_URL}/cuerpo")],
+                    [InlineKeyboardButton("🏠 Menú", callback_data="menu:main")],
+                ])
+            )
+            return
+
+        if accion == "dieta":
+            await query.answer()
+            import nutricion as nut
+            macros = nut.get_macros_hoy()
+            plan   = nut.get_plan_actual()
+
+            if not macros:
+                await query.edit_message_text(
+                    "🥗 <b>Sin datos de nutrición aún</b>\n\n"
+                    "Pésate en ayunas para que calcule tus macros y tu plan semanal.",
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("🏠 Menú", callback_data="menu:main")
+                    ]])
+                )
+                return
+
+            mimo_txt = ""
+            if plan and plan.get("estado_mimo"):
+                mimo_emoji = {"RECOMPOSICION":"🟣","CUTTING_LIMPIO":"🟢",
+                              "CATABOLISMO":"🔴","ESTANCAMIENTO":"🟡"}.get(plan["estado_mimo"],"⚪")
+                mimo_txt = f"Estado: {mimo_emoji} {plan['estado_mimo'].replace('_',' ')}\n\n"
+
+            msg = (
+                f"🥗 <b>Tu nutrición de hoy</b>\n\n"
+                f"{mimo_txt}"
+                f"🔥 <b>{macros['calorias']} kcal</b>\n"
+                f"🥩 Proteína: <b>{macros['proteina']}g</b>\n"
+                f"🍞 Carbs: <b>{macros['carbs']}g</b>\n"
+                f"🥑 Grasas: <b>{macros['grasas']}g</b>\n\n"
+                f"<i>Plan semanal completo en la web 👇</i>"
+            )
+            await query.edit_message_text(
+                msg, parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🌐 Ver plan semanal →", url=f"{ren.WEB_URL}/nutricion")],
+                    [InlineKeyboardButton("🏠 Menú", callback_data="menu:main")],
+                ])
+            )
+            return
+
         if accion == "hoy":
+            await query.answer()
             semana, dia = db.get_estado(uid)
-            # Check if session already started
             sesion = db.get_sesion_activa(uid)
             if sesion and sesion["semana"] == semana and sesion["dia"] == dia:
-                # Resume mid-session
                 texto, teclado = ren.render_ejercicio(uid, semana, dia, sesion["ej_idx"])
             else:
-                # Show full preview first
                 texto, teclado = ren.rutina_preview(uid, semana, dia)
             await query.edit_message_text(
                 texto, reply_markup=teclado,
@@ -1297,8 +1409,9 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
         from renderer import WEB_URL
         teclado_fin = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🌐 Ver mi progreso →", url=WEB_URL)],
-            [InlineKeyboardButton("💪 Rutina de mañana",  callback_data="menu:hoy")],
+            [InlineKeyboardButton("🌐 Ver progreso →",   url=WEB_URL)],
+            [InlineKeyboardButton("💪 Siguiente rutina", callback_data="menu:hoy")],
+            [InlineKeyboardButton("🏠 Menú principal",   callback_data="menu:main")],
         ])
         await query.edit_message_text(
             cierre,
