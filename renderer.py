@@ -466,7 +466,14 @@ def kb_fatiga(semana: int, dia: str, incluir_saltar: bool = False) -> InlineKeyb
 WEB_URL = os.environ.get("FRONTEND_URL", "https://gymcoach.vercel.app")
 
 MENU_PRINCIPAL = InlineKeyboardMarkup([
-    [InlineKeyboardButton("💪 Mi rutina de hoy",          callback_data="menu:hoy")],
-    [InlineKeyboardButton("🌐 Ver progreso y stats →",    url=WEB_URL)],
-    [InlineKeyboardButton("🆕 Nuevo plan",                callback_data="menu:nuevo")],
+    [InlineKeyboardButton("💪 Rutina de hoy",      callback_data="menu:hoy")],
+    [InlineKeyboardButton("⚖️ Mi cuerpo",           callback_data="menu:cuerpo")],
+    [InlineKeyboardButton("🥗 Mi dieta de hoy",    callback_data="menu:dieta")],
+    [InlineKeyboardButton("🌐 Ver todo en la web →", url=WEB_URL)],
+])
+
+# Menú compacto — se muestra dentro de flujos
+MENU_RAPIDO = InlineKeyboardMarkup([
+    [InlineKeyboardButton("🏠 Menú principal", callback_data="menu:main")],
+    [InlineKeyboardButton("🌐 Abrir web →",    url=WEB_URL)],
 ])
