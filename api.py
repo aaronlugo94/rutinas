@@ -820,7 +820,7 @@ async def _run_bot(token: str) -> None:
 
         # Renpho check — corre entre 12pm y 6pm hora local
         hora_int = int(hora.replace(":",""))
-        if 1200 <= hora_int <= 1800:
+        if 600 <= hora_int <= 1000:  # 6am-10am, ventana de pesaje en ayunas
             try:
                 # Obtener datos gym para análisis cruzado
                 from gamification import get_racha
