@@ -1,0 +1,104 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+  background: #000000;
+  color: #ffffff;
+  min-height: 100dvh;
+  overscroll-behavior: none;
+}
+
+.safe-top    { padding-top:    env(safe-area-inset-top); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+
+/* Apple Fitness ring colors */
+:root {
+  --move:    #FA114F;
+  --exercise:#92E82A;
+  --stand:   #00D4FF;
+  --orange:  #FF6B00;
+  --purple:  #BF5AF2;
+  --blue:    #0A84FF;
+  --green:   #30D158;
+  --yellow:  #FFD60A;
+  --pink:    #FF375F;
+  --cyan:    #32ADE6;
+  --red:     #FF453A;
+}
+
+/* Cards */
+.card {
+  background: #1C1C1E;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.card-sm {
+  background: #1C1C1E;
+  border-radius: 12px;
+}
+
+/* Gradient backgrounds */
+.bg-move     { background: linear-gradient(135deg, #FA114F22, #FF6B0011); }
+.bg-exercise { background: linear-gradient(135deg, #92E82A22, #30D15811); }
+.bg-stand    { background: linear-gradient(135deg, #00D4FF22, #32ADE611); }
+.bg-purple   { background: linear-gradient(135deg, #BF5AF222, #9b59b611); }
+
+/* Ring gradient text */
+.text-move     { color: var(--move); }
+.text-exercise { color: var(--exercise); }
+.text-stand    { color: var(--stand); }
+.text-orange   { color: var(--orange); }
+
+/* Nav */
+.nav-bg {
+  background: rgba(0,0,0,0.85);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-top: 0.5px solid rgba(255,255,255,0.1);
+}
+
+/* Animations */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fadeUp 0.35s cubic-bezier(0.16,1,0.3,1) forwards; }
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.scale-in { animation: scaleIn 0.25s ease forwards; }
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, #ffffff08 25%, #ffffff18 50%, #ffffff08 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+
+/* Progress ring */
+.ring-container { position: relative; display: inline-flex; }
+
+/* Muscle group colors */
+.grupo-gluteo  { color: #FF375F; }
+.grupo-pierna  { color: #BF5AF2; }
+.grupo-empuje  { color: #0A84FF; }
+.grupo-tiron   { color: #32ADE6; }
+.grupo-core    { color: #FFD60A; }
+.grupo-cardio  { color: #30D158; }
+
+.dot-gluteo  { background: #FF375F; }
+.dot-pierna  { background: #BF5AF2; }
+.dot-empuje  { background: #0A84FF; }
+.dot-tiron   { background: #32ADE6; }
+.dot-core    { background: #FFD60A; }
+.dot-cardio  { background: #30D158; }
