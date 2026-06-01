@@ -127,9 +127,11 @@ def rutina_preview(user_id: int, semana: int, dia: str) -> tuple[str, InlineKeyb
     msg += "\nRevisa las máquinas y toca <b>Empezar</b> cuando estés listo 👇"
 
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("▶ Empezar sesión", callback_data=f"ej_start:{semana}:{dia}")],
+        [InlineKeyboardButton("▶ Empezar sesión",  callback_data=f"ej_start:{semana}:{dia}")],
         [InlineKeyboardButton("⏭ Saltar este día", callback_data=f"skip_day:{semana}:{dia}"),
          InlineKeyboardButton("❓ Ayuda",           callback_data="ver_ayuda")],
+        [InlineKeyboardButton("← Menú",            callback_data="menu:main")],
+        [InlineKeyboardButton("🏠 Menú",            callback_data="menu:main")],
     ])
     return msg, kb
 
@@ -153,9 +155,10 @@ def render_ejercicio(user_id: int, semana: int, dia: str, idx: int) -> tuple[str
                 f"{cardio['reps']} · Zona 2 (120-135 bpm)\n\n"
                 f"Cuando termines toca <b>Terminé</b> 👇"
             )
-            kb = InlineKeyboardMarkup([[
-                InlineKeyboardButton("✅ Terminé la sesión", callback_data=f"ej_done:{semana}:{dia}")
-            ]])
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ Terminé la sesión", callback_data=f"ej_done:{semana}:{dia}")],
+                [InlineKeyboardButton("🏠 Menú",              callback_data="menu:main")],
+            ])
         else:
             msg = "✅ Todos los ejercicios completados. Toca <b>Terminé</b> 👇"
             kb  = InlineKeyboardMarkup([[
@@ -212,8 +215,10 @@ def render_ejercicio(user_id: int, semana: int, dia: str, idx: int) -> tuple[str
     )
 
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔄 Cambiar ejercicio", callback_data=f"swp_ask:{eid}:{semana}:{dia}"),],
-        [InlineKeyboardButton("✅ Hecho", callback_data=f"ej_hecho:{semana}:{dia}:{idx}")],
+        [InlineKeyboardButton("🔄 Cambiar ejercicio", callback_data=f"swp_ask:{eid}:{semana}:{dia}")],
+        [InlineKeyboardButton("✅ Hecho",              callback_data=f"ej_hecho:{semana}:{dia}:{idx}")],
+        [InlineKeyboardButton("⏭ Saltar día",         callback_data=f"skip_day:{semana}:{dia}"),
+         InlineKeyboardButton("🏠 Menú",              callback_data="menu:main")],
     ])
     return msg, kb
 
@@ -309,8 +314,9 @@ def rutina_html(user_id: int, semana: int, dia: str) -> tuple[str, InlineKeyboar
 
     keyboard += [
         [InlineKeyboardButton("✅ Terminé — registré todo", callback_data=f"finish:{semana}:{dia}")],
-        [InlineKeyboardButton("⏭ Saltar este día",          callback_data=f"skip_day:{semana}:{dia}"),
-         InlineKeyboardButton("❓ Ayuda",                    callback_data="ver_ayuda")],
+        [InlineKeyboardButton("⏭ Saltar este día", callback_data=f"skip_day:{semana}:{dia}"),
+         InlineKeyboardButton("❓ Ayuda",           callback_data="ver_ayuda")],
+        [InlineKeyboardButton("🏠 Menú",            callback_data="menu:main")],
     ]
 
     return msg, InlineKeyboardMarkup(keyboard)
