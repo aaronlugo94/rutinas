@@ -258,6 +258,7 @@ async def check_y_enviar(bot, hora_actual: str) -> None:
     )
 
     for row in rows:
+        row  = dict(row)
         uid  = row["user_id"]
         hora = row.get("hora_recordatorio") or ""
 
