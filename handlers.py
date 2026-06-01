@@ -182,12 +182,12 @@ async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await check_auth(update):
         return
-    paginas = ren.plan_html_paginas(update.effective_user.id)
-    if not paginas:
-        await update.message.reply_text("No tienes plan activo. Usa /start para crear uno.")
-        return
-    for pg in paginas:
-        await update.message.reply_text(pg, parse_mode="HTML")
+    uid    = update.effective_user.id
+    nombre = update.effective_user.first_name or ""
+    texto  = await _texto_menu_principal(uid, nombre)
+    await update.message.reply_text(
+        texto, reply_markup=ren.MENU_PRINCIPAL, parse_mode="HTML"
+    )
 
 
 async def cmd_reset_plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -271,8 +271,9 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         "<b>Comandos</b>\n"
         "/start — Menú principal\n"
-        "/login — Entrar a la web app\n"
-        "/reset_plan — Crear nuevo plan de gym\n\n"
+        "/login — Entrar a la web\n"
+        "/sethorario — Cambiar hora de recordatorio\n"
+        "/reset_plan — Crear nuevo plan\n\n"
 
         "<b>¿Qué es RIR?</b>\n"
         "Reps In Reserve — cuántas reps te sobraban\n"
@@ -281,6 +282,28 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "RIR 3+ = estaba demasiado fácil, sube el peso"
     )
     await update.message.reply_text(texto, parse_mode="HTML", reply_markup=ren.MENU_PRINCIPAL)
+
+
+async def cmd_sethorario(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Cambia la hora de notificación sin resetear el plan."""
+    if not await check_auth(update):
+        return
+    uid = update.effective_user.id
+    await update.message.reply_text(
+        "⏰ ¿A qué hora quieres recibir el recordatorio matutino?",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🌅 6:00 AM", callback_data="rec:06:00"),
+             InlineKeyboardButton("🌅 7:00 AM", callback_data="rec:07:00"),
+             InlineKeyboardButton("🌅 8:00 AM", callback_data="rec:08:00")],
+            [InlineKeyboardButton("☀️ 12:00 PM", callback_data="rec:12:00"),
+             InlineKeyboardButton("🌆 5:00 PM",  callback_data="rec:17:00"),
+             InlineKeyboardButton("🌆 6:00 PM",  callback_data="rec:18:00")],
+            [InlineKeyboardButton("🌙 7:00 PM",  callback_data="rec:19:00"),
+             InlineKeyboardButton("🌙 8:00 PM",  callback_data="rec:20:00"),
+             InlineKeyboardButton("🌙 9:00 PM",  callback_data="rec:21:00")],
+            [InlineKeyboardButton("❌ Sin recordatorio", callback_data="rec:none")],
+        ])
+    )
 
 
 async def cmd_setpin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -468,6 +491,46 @@ async def _post_pesos(uid: int, semana: int, dia: str, query, context) -> None:
         reply_markup=teclado,
         parse_mode="HTML",
     )
+
+
+async def _handle_peso_texto(uid: int, texto: str, update, context) -> None:
+    """Procesa un número enviado como peso durante la sesión activa."""
+    flow = db.get_peso_flow(uid)
+    if not flow:
+        return
+    ejs    = flow["ejercicios"]
+    idx    = flow["idx"]
+    semana = flow["semana"]
+    dia    = flow["dia"]
+    if idx >= len(ejs):
+        db.clear_peso_flow(uid)
+        return
+    eid    = ejs[idx]
+    ej_row = db.get_ejercicios_dia(uid, semana, dia)
+    ej_data = next((e for e in ej_row if e["ejercicio_id"] == eid), None)
+    try:
+        peso = float(texto.replace(",", "."))
+    except ValueError:
+        await update.message.reply_text(
+            "Solo el número. Ej: 135  —  escribe 0 para saltar."
+        )
+        return
+    if peso > 0 and ej_data:
+        db.save_peso(uid, eid, semana, dia,
+                     peso_lbs=peso,
+                     series=ej_data.get("series"),
+                     reps=ej_data.get("reps"))
+    idx += 1
+    db.clear_peso_flow(uid)
+    sesion = db.get_sesion_activa(uid)
+    if sesion and sesion.get("fase") == "peso":
+        ej_idx    = sesion["ej_idx"]
+        siguiente = ej_idx + 1
+        db.save_sesion_activa(uid, semana, dia, siguiente, "ejercicio")
+        texto_ej, teclado_ej = ren.render_ejercicio(uid, semana, dia, siguiente)
+        await update.message.reply_text(
+            texto_ej, reply_markup=teclado_ej, parse_mode="HTML"
+        )
 
 
 async def handler_texto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -903,11 +966,15 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         else:
             db.upsert_estado(uid, 1, "pendiente", objetivo=objetivo)
             await query.edit_message_text(
-                "<b>2/6</b> — ¿Género?",
+                "<b>2/5</b> — ¿Cuánto tiempo llevas entrenando?\n\n"
+                "🌱 <b>Menos de 1 año</b> — empiezas o llevas poco\n"
+                "💪 <b>1 a 3 años</b> — ya dominas los básicos\n"
+                "🔥 <b>Más de 3 años</b> — entrenas con barra libre regularmente",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("👩 Mujer",  callback_data="gen:mujer")],
-                    [InlineKeyboardButton("👨 Hombre", callback_data="gen:hombre")],
-                    [InlineKeyboardButton("← Atrás",   callback_data="obj:inicio")],
+                    [InlineKeyboardButton("🌱 Menos de 1 año", callback_data="niv:principiante")],
+                    [InlineKeyboardButton("💪 1 a 3 años",     callback_data="niv:intermedio")],
+                    [InlineKeyboardButton("🔥 Más de 3 años",  callback_data="niv:avanzado")],
+                    [InlineKeyboardButton("← Atrás",           callback_data="obj:inicio")],
                 ]),
                 parse_mode="HTML",
             )
@@ -954,11 +1021,15 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if nivel_val == "back":
             # Back to gender
             await query.edit_message_text(
-                "<b>2/6</b> — ¿Género?",
+                "<b>2/5</b> — ¿Cuánto tiempo llevas entrenando?\n\n"
+                "🌱 <b>Menos de 1 año</b> — empiezas o llevas poco\n"
+                "💪 <b>1 a 3 años</b> — ya dominas los básicos\n"
+                "🔥 <b>Más de 3 años</b> — entrenas con barra libre regularmente",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("👩 Mujer",  callback_data="gen:mujer")],
-                    [InlineKeyboardButton("👨 Hombre", callback_data="gen:hombre")],
-                    [InlineKeyboardButton("← Atrás",   callback_data="obj:inicio")],
+                    [InlineKeyboardButton("🌱 Menos de 1 año", callback_data="niv:principiante")],
+                    [InlineKeyboardButton("💪 1 a 3 años",     callback_data="niv:intermedio")],
+                    [InlineKeyboardButton("🔥 Más de 3 años",  callback_data="niv:avanzado")],
+                    [InlineKeyboardButton("← Atrás",           callback_data="obj:inicio")],
                 ]),
                 parse_mode="HTML",
             )
@@ -966,7 +1037,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         nivel = nivel_val
         db.upsert_perfil(uid, nivel=nivel)
         await query.edit_message_text(
-            "<b>4/6</b> — ¿Tienes alguna limitación física?",
+            "<b>3/5</b> — ¿Tienes alguna limitación física?",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("✅ Sin limitaciones",  callback_data="lim:ninguna")],
                 [InlineKeyboardButton("🦵 Rodilla delicada", callback_data="lim:rodilla")],
@@ -983,7 +1054,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         lim = data.split(":")[1]
         db.upsert_perfil(uid, limitaciones=lim)
         await query.edit_message_text(
-            "<b>5/6</b> — ¿Dónde entrenas?\n\n"
+            "<b>4/5</b> — ¿Dónde entrenas?\n\n"
             "🏋️ <b>Gimnasio</b> — máquinas, poleas, mancuernas, barras\n"
             "🏠 <b>Casa</b> — peso corporal, silla, escalón, botellas\n"
             "🦺 <b>Banda elástica</b> — ejercicios solo con banda",
@@ -1003,7 +1074,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if ambiente == "back":
             # Back to limitaciones
             await query.edit_message_text(
-                "<b>4/6</b> — ¿Limitación física?",
+                "<b>3/5</b> — ¿Limitación física?",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("✅ Sin limitaciones",  callback_data="lim:ninguna")],
                     [InlineKeyboardButton("🦵 Rodilla delicada", callback_data="lim:rodilla")],
@@ -1017,7 +1088,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         db.upsert_perfil(uid, ambiente_preferido=ambiente)
         amb_desc = {"gym": "gimnasio 🏋️", "home": "casa 🏠", "band": "banda elástica 🦺"}.get(ambiente, ambiente)
         await query.edit_message_text(
-            f"<b>6/6</b> — ¿Días por semana?\n\n"
+            f"<b>5/5</b> — ¿Días por semana?\n\n"
             f"<i>Plan para {amb_desc}</i>",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("3️⃣ 3 días", callback_data="dias:3")],
@@ -1038,7 +1109,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         # dias:back → volver a ambiente
         if dias_val == "back":
             await query.edit_message_text(
-                "<b>5/6</b> — ¿Dónde entrenas?",
+                "<b>4/5</b> — ¿Dónde entrenas?",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🏋️ Voy al gimnasio",        callback_data="amb:gym")],
                     [InlineKeyboardButton("🏠 Entreno en casa",         callback_data="amb:home")],
@@ -1058,7 +1129,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
         # Paso 7/7 — Hora de notificaciones (aquí, dentro del onboarding)
         await query.edit_message_text(
-            "<b>Último paso</b> — ¿A qué hora sueles ir al gym?\n\nTe mando un recordatorio esa mañana y un resumen por la noche 🌙",
+            "<b>5/5</b> — ¿A qué hora sueles ir al gym?\n\nTe mando un recordatorio esa mañana y un resumen por la noche 🌙",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🌅 6:00 AM", callback_data="rec:06:00"),
                  InlineKeyboardButton("🌅 7:00 AM", callback_data="rec:07:00"),
@@ -1141,7 +1212,10 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                                             callback_data=f"swp_ask:{eid}:{sem_s}:{dia}:{pagina+1}"))
         if nav:
             filas.append(nav)
-        filas.append([InlineKeyboardButton("✖ Cancelar", callback_data=f"swp_cancel:{sem_s}:{dia}")])
+        filas.append([
+            InlineKeyboardButton("✖ Cancelar", callback_data=f"swp_cancel:{sem_s}:{dia}"),
+            InlineKeyboardButton("🏠 Menú",    callback_data="menu:main"),
+        ])
 
         await query.edit_message_text(
             f"Cambiar: <b>{ren.safe(original)}</b>\n<i>Opciones {inicio+1}-{min(inicio+por_pagina, total)} de {total}</i>",
@@ -1183,28 +1257,6 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
 
     # ── TERMINAR RUTINA ───────────────────────────────────────────────────────
-    if data.startswith("finish:"):
-        _, sem_s, dia = data.split(":")
-        sem = int(sem_s)
-        await query.answer()
-        # Marcar toda la sesión como completada de una sola vez
-        with db.get_db() as conn:
-            conn.execute(
-                "UPDATE rutinas SET completado=1 WHERE user_id=? AND semana=? AND dia=?",
-                (uid, sem, dia),
-            )
-        # Arrancar flujo de registro de pesos
-        ejercicios = db.get_ejercicios_dia(uid, sem, dia)
-        fuerza     = [e for e in ejercicios if not e["ejercicio_id"].startswith("CAR")]
-        if fuerza:
-            ids = [e["ejercicio_id"] for e in fuerza]
-            db.save_peso_flow(uid, sem, dia, ids, 0)
-            await _mostrar_peso_prompt(uid, sem, dia, fuerza, 0, query=query)
-        else:
-            await _post_pesos(uid, sem, dia, query, context)
-        return
-
-    # ── FLUJO EJERCICIO POR EJERCICIO ──────────────────────────────────────────
 
     if data.startswith("ej_start:"):
         # Usuario toca Empezar — mostrar ejercicio 1
@@ -1268,6 +1320,14 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await query.edit_message_text(texto, reply_markup=teclado, parse_mode="HTML")
         return
 
+    if data.startswith("ej_resume:"):
+        await query.answer()
+        _, sem_s, dia, idx_s = data.split(":")
+        sem = int(sem_s); idx = int(idx_s)
+        texto, teclado = ren.render_ejercicio(uid, sem, dia, idx)
+        await query.edit_message_text(texto, reply_markup=teclado, parse_mode="HTML")
+        return
+
     if data.startswith("ej_done:"):
         # Usuario terminó todos los ejercicios
         await query.answer()
@@ -1305,10 +1365,8 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                         "💾 Guardar lo que hice y saltar",
                         callback_data=f"skip_confirm:{sem}:{dia}:save"
                     )],
-                    [InlineKeyboardButton(
-                        "🔙 Volver a la rutina",
-                        callback_data="menu:hoy"
-                    )],
+                    [InlineKeyboardButton("↩ Volver a la rutina", callback_data="menu:hoy")],
+                    [InlineKeyboardButton("🏠 Menú principal",   callback_data="menu:main")],
                 ]),
                 parse_mode="HTML",
             )
@@ -1324,12 +1382,6 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await _do_skip_day(uid, sem, dia, query, context, save=(modo == "save"))
         return
 
-    if data.startswith("skip_pesos:"):
-        await query.answer()
-        _, sem_s, dia = data.split(":")
-        db.clear_peso_flow(uid)
-        await _post_pesos(uid, int(sem_s), dia, query, context)
-        return
 
     if data.startswith("sesion:"):
         # sesion:{semana}:{dia}:{rir}:{fatiga}
@@ -1420,17 +1472,6 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         return
 
-    if data.startswith("prog_ej:"):
-        await query.answer()
-        eid  = data.split(":", 1)[1]
-        msg  = prog.msg_progresion_ejercicio(uid, eid)
-        # Back button to list
-        teclado = InlineKeyboardMarkup([
-            [InlineKeyboardButton("← Lista", callback_data="prog_lista")],
-            [InlineKeyboardButton("📊 Resumen", callback_data="prog_resumen")],
-        ])
-        await query.edit_message_text(msg, reply_markup=teclado, parse_mode="HTML")
-        return
 
     if data.startswith("recovery:"):
         await query.answer()
@@ -1446,77 +1487,14 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await query.edit_message_text(
             msg,
             parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔙 Volver", callback_data="menu:hoy")
-            ]]),
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("💪 Volver a la rutina", callback_data="menu:hoy")],
+                [InlineKeyboardButton("🏠 Menú principal",     callback_data="menu:main")],
+            ]),
         )
         return
 
-    if data == "prog_lista":
-        await query.answer()
-        texto, ejercicios = prog.msg_lista_ejercicios(uid)
-        filas = []
-        for e in ejercicios[:20]:
-            filas.append([InlineKeyboardButton(
-                e["ejercicio"][:40],
-                callback_data=f"prog_ej:{e['ejercicio_id']}"
-            )])
-        filas.append([InlineKeyboardButton("📊 Resumen global", callback_data="prog_resumen")])
-        filas.append([InlineKeyboardButton("🔙 Menú", callback_data="menu:main")])
-        await query.edit_message_text(
-            texto,
-            reply_markup=InlineKeyboardMarkup(filas),
-            parse_mode="HTML",
-        )
-        return
 
-    if data == "prog_resumen":
-        await query.answer()
-        msg = prog.msg_resumen_global(uid)
-        teclado = InlineKeyboardMarkup([
-            [InlineKeyboardButton("← Lista ejercicios", callback_data="prog_lista")],
-            [InlineKeyboardButton("🔙 Menú", callback_data="menu:main")],
-        ])
-        await query.edit_message_text(msg, reply_markup=teclado, parse_mode="HTML")
-        return
-
-    if data.startswith("tip:"):
-        await query.answer()
-        paso = data.split(":")[1]
-        if paso == "2":
-            await query.edit_message_text(
-                "Paso 2 de 3 — Registrar pesos\n\n"
-                "Después de tocar Terminé, el bot te pregunta cuántas <b>lbs</b> usaste en cada ejercicio.\n\n"
-                "La siguiente semana te dice cuánto subir. Escribe <b>0</b> para saltar un ejercicio.",
-                parse_mode="HTML",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("← Atrás", callback_data="tip:1"),
-                    InlineKeyboardButton("Siguiente →", callback_data="tip:3"),
-                ]]),
-            )
-        elif paso == "3":
-            await query.edit_message_text(
-                "Paso 3 de 3 — Cambiar ejercicios y RIR\n\n"
-                "🔄 Si no te gusta un ejercicio, toca el botón de cambiar al lado.\n\n"
-                "Al final te pregunto <b>RIR</b> — cuántas reps te sobraban al terminar.\n"
-                "  · RIR 0 = lo diste todo\n"
-                "  · RIR 2 = quedaban 2 reps\n"
-                "  · RIR 3+ = sube el peso la próxima vez",
-                parse_mode="HTML",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("← Atrás", callback_data="tip:2")],
-                    [InlineKeyboardButton("💪 Ver mi rutina", callback_data="menu:hoy")],
-                ]),
-            )
-        elif paso == "1":
-            await query.edit_message_text(
-                "Paso 1 de 3 — Entrenar\n\nAbre tu rutina, haz los ejercicios, toca <b>✅ Terminé</b> al acabar.",
-                parse_mode="HTML",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("Siguiente →", callback_data="tip:2")
-                ]]),
-            )
-        return
 
     if data.startswith("rec:"):
         await query.answer()
@@ -1529,7 +1507,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             amb_b     = perfil_b.get("ambiente_preferido", "gym")
             amb_desc_b = {"gym": "Gym 🏋️", "home": "Casa 🏠", "band": "Banda 🦺"}.get(amb_b, amb_b)
             await query.edit_message_text(
-                f"<b>6/6</b> — ¿Cuántos días por semana?\n\n<i>Plan para {amb_desc_b}</i>",
+                f"<b>5/5</b> — ¿Cuántos días por semana?\n\n<i>Plan para {amb_desc_b}</i>",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("3️⃣ 3 días", callback_data="dias:3")],
                     [InlineKeyboardButton("4️⃣ 4 días", callback_data="dias:4")],
@@ -1624,7 +1602,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("stats",      cmd_stats))
     app.add_handler(CommandHandler("resumen",    cmd_resumen))
     app.add_handler(CommandHandler("reset_plan", cmd_reset_plan))
-    app.add_handler(CommandHandler("setpin",     cmd_setpin))
+    app.add_handler(CommandHandler("sethorario",  cmd_sethorario))
+    app.add_handler(CommandHandler("setpin",      cmd_setpin))
     app.add_handler(CommandHandler("adduser",    cmd_adduser))
 
     app.add_handler(CallbackQueryHandler(cb_rir,         pattern="^rir:"))
