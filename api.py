@@ -700,6 +700,47 @@ Responde en español. Máximo 3 líneas. Sin bullets, en párrafo."""
         return {"texto": None, "tiene_datos": True}
 
 
+# ── CUERPO ────────────────────────────────────────────────────────────────────
+
+@app.get("/cuerpo")
+def get_cuerpo(uid: int = Depends(get_current_user)) -> dict:
+    """Último pesaje + score + proyección a meta."""
+    import cuerpo as corp
+    data = corp.get_resumen_cuerpo()
+    if not data:
+        return {"tiene_datos": False}
+    return {"tiene_datos": True, **data}
+
+
+@app.get("/cuerpo/historial")
+def get_cuerpo_historial(uid: int = Depends(get_current_user)) -> dict:
+    """Historial de pesajes para la gráfica de tendencia."""
+    historial = db.get_historial_pesajes(dias=90)
+    return {"historial": [dict(r) for r in historial]}
+
+
+# ── NUTRICIÓN ─────────────────────────────────────────────────────────────────
+
+@app.get("/nutricion/plan")
+def get_plan_nutricion(uid: int = Depends(get_current_user)) -> dict:
+    """Plan semanal actual."""
+    import nutricion as nut
+    plan = nut.get_plan_actual()
+    if not plan:
+        return {"tiene_plan": False}
+    return {"tiene_plan": True, **plan}
+
+
+@app.get("/nutricion/macros")
+def get_macros(uid: int = Depends(get_current_user)) -> dict:
+    """Macros del día según último pesaje y multiplicador actual."""
+    import nutricion as nut
+    macros = nut.get_macros_hoy()
+    if not macros:
+        return {"tiene_datos": False}
+    return {"tiene_datos": True, **macros}
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "version": "1.0"}
@@ -716,6 +757,19 @@ async def startup():
         """CREATE TABLE IF NOT EXISTS login_tokens (
             token TEXT PRIMARY KEY, user_id INTEGER NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, used INTEGER DEFAULT 0)""",
+        """CREATE TABLE IF NOT EXISTS pesajes (
+            Fecha TEXT PRIMARY KEY, Timestamp INTEGER UNIQUE,
+            Peso_kg REAL, Grasa_Porcentaje REAL, Agua REAL,
+            Musculo_Pct REAL, Musculo_kg REAL, BMR INTEGER, VisFat REAL,
+            BMI REAL, EdadMetabolica INTEGER, FatFreeWeight REAL,
+            Proteina REAL, MasaOsea REAL)""",
+        """CREATE TABLE IF NOT EXISTS historico_dietas (
+            fecha TEXT PRIMARY KEY, score_comp INTEGER, estado_mimo TEXT,
+            kcal_mult REAL, calorias INTEGER, proteina INTEGER,
+            carbs INTEGER, grasas INTEGER, dieta_html TEXT, delta_peso REAL)""",
+        "CREATE TABLE IF NOT EXISTS config_nutricion (clave TEXT PRIMARY KEY, valor TEXT)",
+        "INSERT OR IGNORE INTO config_nutricion (clave, valor) VALUES ('kcal_mult','1.0')",
+        "CREATE TABLE IF NOT EXISTS analisis_historial (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, fecha TEXT NOT NULL, texto TEXT NOT NULL, tipo TEXT DEFAULT 'nocturno')",
         """CREATE TABLE IF NOT EXISTS sesion_activa (
             user_id INTEGER PRIMARY KEY, semana INTEGER, dia TEXT,
             ej_idx INTEGER DEFAULT 0, fase TEXT DEFAULT 'ejercicio',
@@ -755,9 +809,43 @@ async def _run_bot(token: str) -> None:
     async def recordatorios(ctx) -> None:
         import pytz
         from datetime import datetime
+        import cuerpo as corp
+        import nutricion as nut
+
         tz   = pytz.timezone("America/Phoenix")
         hora = datetime.now(tz).strftime("%H:%M")
+
+        # Recordatorios gym + análisis nocturno
         await notif.check_y_enviar(bot_app.bot, hora)
+
+        # Renpho check — corre entre 12pm y 6pm hora local
+        hora_int = int(hora.replace(":",""))
+        if 1200 <= hora_int <= 1800:
+            try:
+                # Obtener datos gym para análisis cruzado
+                from gamification import get_racha
+                uid_principal = int(os.environ.get("ADMIN_TELEGRAM_ID", "1557254587"))
+                racha = get_racha(uid_principal)
+                datos_gym = {"racha": racha}
+                await corp.ejecutar_diario(
+                    bot=bot_app.bot,
+                    chat_id=uid_principal,
+                    datos_gym=datos_gym,
+                )
+            except Exception as e:
+                logger.warning("Renpho check: %s", e)
+
+        # Job dominical — corre solo domingos
+        import pytz as _tz
+        if datetime.now(_tz.timezone("America/Phoenix")).weekday() == 6:
+            try:
+                uid_principal = int(os.environ.get("ADMIN_TELEGRAM_ID", "1557254587"))
+                await nut.ejecutar_dominical(
+                    bot=bot_app.bot,
+                    chat_id=uid_principal,
+                )
+            except Exception as e:
+                logger.warning("Job dominical: %s", e)
 
     jq = bot_app.job_queue
     if jq:
