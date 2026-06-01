@@ -244,17 +244,16 @@ async def msg_resumen_nocturno(user_id: int) -> str:
 async def check_y_enviar(bot, hora_actual: str) -> None:
     """
     Corre cada minuto desde el scheduler.
-    Envía recordatorio de mañana a la hora configurada.
-    Envía resumen nocturno a las 9pm hora local.
+    - Recordatorio mañana a la hora configurada
+    - Resumen nocturno a las 9pm
+    - Detección de inactividad: si llevas 2+ días sin entrenar
     """
-    # Hora fija para resumen nocturno
     HORA_NOCHE = "21:00"
 
     rows = db.fetchall(
         "SELECT u.user_id, u.hora_recordatorio, u.nombre "
         "FROM usuarios u JOIN allowed_users a ON a.user_id = u.user_id "
-        "WHERE a.activo = 1",
-        (),
+        "WHERE a.activo = 1", (),
     )
 
     for row in rows:
@@ -262,30 +261,88 @@ async def check_y_enviar(bot, hora_actual: str) -> None:
         uid  = row["user_id"]
         hora = row.get("hora_recordatorio") or ""
 
-        # Recordatorio de mañana
+        # ── Recordatorio mañana ───────────────────────────────────────────────
         if hora and hora == hora_actual:
             try:
-                msg = msg_recordatorio(uid)
+                # Verificar inactividad antes de mandar recordatorio normal
+                dias_inactivo = _dias_sin_entrenar(uid)
+                if dias_inactivo >= 2:
+                    msg = await _msg_inactividad(uid, dias_inactivo)
+                else:
+                    msg = msg_recordatorio(uid)
                 if msg:
-                    await bot.send_message(
-                        chat_id    = uid,
-                        text       = msg,
-                        parse_mode = "HTML",
-                    )
-                    logger.info("Recordatorio mañana enviado a %s", uid)
+                    await bot.send_message(chat_id=uid, text=msg, parse_mode="HTML")
+                    logger.info("Recordatorio enviado a %s (inactivo: %d días)", uid, dias_inactivo)
             except Exception as e:
                 logger.warning("Recordatorio %s: %s", uid, e)
 
-        # Resumen nocturno — 9pm fijo para todos
+        # ── Resumen nocturno ──────────────────────────────────────────────────
         if hora_actual == HORA_NOCHE:
             try:
                 msg = await msg_resumen_nocturno(uid)
                 if msg:
-                    await bot.send_message(
-                        chat_id    = uid,
-                        text       = msg,
-                        parse_mode = "HTML",
-                    )
+                    await bot.send_message(chat_id=uid, text=msg, parse_mode="HTML")
                     logger.info("Resumen nocturno enviado a %s", uid)
             except Exception as e:
                 logger.warning("Resumen nocturno %s: %s", uid, e)
+
+
+def _dias_sin_entrenar(user_id: int) -> int:
+    """Cuántos días lleva el usuario sin completar una sesión."""
+    from datetime import datetime, date
+    row = db.fetchone("""
+        SELECT MAX(fecha) as ultima FROM progreso WHERE user_id=?
+    """, (user_id,))
+    if not row or not row["ultima"]:
+        return 999  # nunca ha entrenado
+    ultima = datetime.strptime(row["ultima"], "%Y-%m-%d").date()
+    return (date.today() - ultima).days
+
+
+async def _msg_inactividad(user_id: int, dias: int) -> str:
+    """
+    Mensaje personalizado de reenganche cuando llevas 2+ días sin entrenar.
+    Gemini analiza tus datos y da un mensaje específico, no genérico.
+    """
+    import os
+    from google import genai
+
+    perfil     = db.get_perfil(user_id)
+    semana, dia = db.get_estado(user_id)
+    ejs        = db.get_ejercicios_dia(user_id, semana, dia)
+    grupo_hoy  = ejs[0].get("grupo", "") if ejs else ""
+    racha_max  = db.fetchone(
+        "SELECT racha_maxima FROM gamificacion WHERE user_id=?", (user_id,)
+    )
+    racha_max_n = int(racha_max["racha_maxima"]) if racha_max else 0
+
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        # Fallback sin IA
+        if dias == 2:
+            return f"Han pasado 2 días. Hoy toca {grupo_hoy.upper() if grupo_hoy else 'entrenar'}. 💪"
+        return f"Llevas {dias} días sin entrenar. Tu cuerpo está listo. 🔥"
+
+    try:
+        client = genai.Client(api_key=api_key)
+        prompt = f"""Eres un coach personal. El usuario lleva {dias} días sin entrenar.
+Escribe UN mensaje corto de reenganche (máx 2 líneas) que sea:
+- Específico a sus datos (no genérico)
+- Directo, sin drama
+- Que mencione qué toca hoy
+
+DATOS:
+- Días sin entrenar: {dias}
+- Racha máxima histórica: {racha_max_n} días
+- Grupo muscular de hoy: {grupo_hoy or 'no definido'}
+- Objetivo: {perfil.get('objetivo', 'general')}
+
+Sin emojis excesivos. Sin "¡" ni drama. Solo motivación real en 1-2 líneas."""
+
+        resp = client.models.generate_content(
+            model="gemini-2.0-flash", contents=prompt
+        )
+        return resp.text.strip() if resp and resp.text else f"Llevas {dias} días. Hoy toca volver. 💪"
+    except Exception as e:
+        logger.warning("Gemini inactividad: %s", e)
+        return f"Llevas {dias} días sin entrenar. Hoy toca {grupo_hoy.upper() if grupo_hoy else 'volver'}. 💪"
