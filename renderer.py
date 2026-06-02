@@ -481,7 +481,7 @@ TECLADO_PERSISTENTE = ReplyKeyboardMarkup(
         ["🥗 Mi dieta",      "🌐 Web"],
     ],
     resize_keyboard   = True,
-    persistent        = True,
+    is_persistent     = True,
     input_field_placeholder = "Escribe o usa los botones 👇",
 )
 
