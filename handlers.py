@@ -100,13 +100,16 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await _onboarding_inicio(update, nombre)
         return
 
-    # Una sola ventana — el menú principal
+    # Instalar teclado persistente + mostrar menú inline
     texto = await _texto_menu_principal(uid, nombre)
     await update.message.reply_text(
         texto,
-        reply_markup=ren.MENU_PRINCIPAL,
+        reply_markup=ren.TECLADO_PERSISTENTE,
         parse_mode="HTML",
-        disable_web_page_preview=True,
+    )
+    await update.message.reply_text(
+        "¿Qué hacemos? 👇",
+        reply_markup=ren.MENU_PRINCIPAL,
     )
 
 
@@ -252,36 +255,18 @@ async def cmd_login(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await check_auth(update):
         return
-    texto = (
-        "<b>GymCoach</b>\n\n"
-
-        "<b>Flujo básico</b>\n"
-        "1. /start → ver rutina del día\n"
-        "2. Entrena todos los ejercicios\n"
-        "3. Toca ✅ Terminé\n"
-        "4. Registra cuántas lbs usaste (escribe el número)\n"
-        "5. Dinos cómo estuvo la sesión\n"
-        "→ La siguiente semana el bot te dice cuánto subir\n\n"
-
-        "<b>Botones en la rutina</b>\n"
-        "🔄 — Cambiar ese ejercicio por otro\n"
-        "✅ Terminé — Marcar sesión completa\n"
-        "📊 Stats — Ver progreso y badges\n"
-        "📋 Plan — Ver las 4 semanas\n\n"
-
-        "<b>Comandos</b>\n"
+    uid = update.effective_user.id
+    await update.message.reply_text(
+        "❓ <b>Comandos disponibles</b>\n\n"
         "/start — Menú principal\n"
         "/login — Entrar a la web\n"
         "/sethorario — Cambiar hora de recordatorio\n"
-        "/reset_plan — Crear nuevo plan\n\n"
-
-        "<b>¿Qué es RIR?</b>\n"
-        "Reps In Reserve — cuántas reps te sobraban\n"
-        "RIR 0 = lo diste todo\n"
-        "RIR 2 = podías hacer 2 más pero paraste\n"
-        "RIR 3+ = estaba demasiado fácil, sube el peso"
+        "/reset_plan — Crear nuevo plan",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("💪 Ir a mi rutina", callback_data="menu:hoy")
+        ]])
     )
-    await update.message.reply_text(texto, parse_mode="HTML", reply_markup=ren.MENU_PRINCIPAL)
 
 
 async def cmd_sethorario(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
