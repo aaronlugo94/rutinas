@@ -130,7 +130,6 @@ def rutina_preview(user_id: int, semana: int, dia: str) -> tuple[str, InlineKeyb
         [InlineKeyboardButton("▶ Empezar sesión",  callback_data=f"ej_start:{semana}:{dia}")],
         [InlineKeyboardButton("⏭ Saltar este día", callback_data=f"skip_day:{semana}:{dia}"),
          InlineKeyboardButton("❓ Ayuda",           callback_data="ver_ayuda")],
-        [InlineKeyboardButton("← Menú",            callback_data="menu:main")],
         [InlineKeyboardButton("🏠 Menú",            callback_data="menu:main")],
     ])
     return msg, kb
@@ -471,15 +470,31 @@ def kb_fatiga(semana: int, dia: str, incluir_saltar: bool = False) -> InlineKeyb
 
 WEB_URL = os.environ.get("FRONTEND_URL", "https://gymcoach.vercel.app")
 
+# ── Teclado persistente (siempre visible en la barra de texto) ────────────────
+# Se muestra con reply_markup en /start y se mantiene para siempre
+TECLADO_PERSISTENTE = ReplyKeyboardMarkup(
+    [
+        ["💪 Rutina de hoy", "⚖️ Mi cuerpo"],
+        ["🥗 Mi dieta",      "🌐 Web"],
+    ],
+    resize_keyboard   = True,
+    persistent        = True,
+    input_field_placeholder = "Escribe o usa los botones 👇",
+)
+
+# ── Inline menu — para mostrar info rápida en la ventana ─────────────────────
 MENU_PRINCIPAL = InlineKeyboardMarkup([
-    [InlineKeyboardButton("💪 Rutina de hoy",      callback_data="menu:hoy")],
-    [InlineKeyboardButton("⚖️ Mi cuerpo",           callback_data="menu:cuerpo")],
-    [InlineKeyboardButton("🥗 Mi dieta de hoy",    callback_data="menu:dieta")],
-    [InlineKeyboardButton("🌐 Ver todo en la web →", url=WEB_URL)],
+    [InlineKeyboardButton("💪 Rutina de hoy",       callback_data="menu:hoy")],
+    [InlineKeyboardButton("⚖️ Mi cuerpo",            callback_data="menu:cuerpo")],
+    [InlineKeyboardButton("🥗 Mi dieta de hoy",     callback_data="menu:dieta")],
+    [InlineKeyboardButton("🌐 Ver todo →",           url=WEB_URL)],
 ])
 
-# Menú compacto — se muestra dentro de flujos
+# Botón único de regreso — sin duplicar
+BTN_MENU = InlineKeyboardMarkup([[
+    InlineKeyboardButton("🏠 Menú", callback_data="menu:main")
+]])
+
 MENU_RAPIDO = InlineKeyboardMarkup([
-    [InlineKeyboardButton("🏠 Menú principal", callback_data="menu:main")],
-    [InlineKeyboardButton("🌐 Abrir web →",    url=WEB_URL)],
+    [InlineKeyboardButton("🏠 Menú", callback_data="menu:main")],
 ])
