@@ -8,7 +8,10 @@ from __future__ import annotations
 import os
 
 import html
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import (
+    InlineKeyboardButton, InlineKeyboardMarkup,
+    ReplyKeyboardMarkup, KeyboardButton,
+)
 
 import database as db
 import catalog as cat
