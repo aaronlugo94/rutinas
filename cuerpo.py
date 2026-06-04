@@ -218,8 +218,25 @@ def analizar_con_ia(m: dict, anterior: dict | None, tend_7d: dict | None,
                                   "VisFat": m["grasa_visceral"],
                                   "Agua": m["agua"]})
 
-    prompt = f"""Eres un coach experto en recomposición corporal y rendimiento atlético.
-Analiza estos datos y da una respuesta CONCISA y ESPECÍFICA.
+    # Perfil del usuario para contexto adicional
+    perfil_uid = None
+    if chat_id:
+        try:
+            perfil_uid = db.get_perfil(chat_id)
+        except Exception:
+            pass
+
+    tdee_str = ""
+    sueño_str = ""
+    if perfil_uid:
+        tdee = perfil_uid.get("tdee_estimado", 0)
+        if tdee:
+            tdee_str = f"\nTDEE estimado: {tdee} kcal/día"
+        sueño = perfil_uid.get("sueño_horas", 0)
+        if sueño and sueño < 7:
+            sueño_str = f"\nSueño reciente: {sueño}h — subóptimo para recuperación"
+
+    prompt = f"""Eres el coach de composición corporal de este usuario. Tienes sus datos reales.
 
 DATOS HOY ({m['fecha_str']}):
 Peso: {m['peso']}kg | Grasa: {m['grasa']}% | Músculo: {m['musculo_pct']}% 
@@ -227,14 +244,19 @@ Visceral: {m['grasa_visceral']} | Agua: {m['agua']}% | BMR: {m['bmr']} kcal
 Score corporal: {score}/100 ({desc})
 {ctx_delta}
 {tend_str}
+{tdee_str}
+{sueño_str}
 {gym_ctx}
 
-FORMATO — máximo 3 líneas, solo texto, sin listas:
-1. Qué dicen los datos hoy (distingue ruido hídrico de cambio real)
-2. Una acción concreta para las próximas 24 horas
-3. Conexión entre composición corporal y rendimiento en el gym (si hay datos)
+REGLAS:
+- Diferencia fluctuación hídrica (cambios <0.5kg en 24h) de cambio real de grasa
+- Si músculo = 0% es dato anómalo de la báscula — no lo analices, menciónalo brevemente
+- Máximo 3 líneas, texto corrido sin listas
+- Línea 1: qué dicen los datos HOY con números
+- Línea 2: una acción concreta para las próximas 24h
+- Línea 3: conexión gym-composición si hay datos gym
 
-USA SOLO <b> e <i>. MÁXIMO 120 palabras."""
+USA SOLO <b> e <i>. MÁXIMO 100 palabras. En español."""
 
     client = genai.Client(api_key=api_key)
     for intento in range(3):
