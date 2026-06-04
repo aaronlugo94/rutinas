@@ -153,6 +153,35 @@ def init_db():
             clave TEXT PRIMARY KEY, valor TEXT);
         """)
         conn.execute("INSERT OR IGNORE INTO config_nutricion (clave, valor) VALUES ('kcal_mult','1.0')")
+
+    # Migraciones — corren en cada arranque, fallan silenciosamente si la columna ya existe
+    MIGRACIONES = [
+        "ALTER TABLE usuarios ADD COLUMN pin TEXT",
+        "ALTER TABLE usuarios ADD COLUMN hora_recordatorio TEXT",
+        "ALTER TABLE usuarios ADD COLUMN tipo_dieta TEXT DEFAULT 'omnivoro'",
+        "ALTER TABLE usuarios ADD COLUMN alergias TEXT DEFAULT 'ninguna'",
+        "ALTER TABLE usuarios ADD COLUMN objetivo_vida TEXT",
+        "ALTER TABLE usuarios ADD COLUMN edad INTEGER",
+        "ALTER TABLE usuarios ADD COLUMN sexo TEXT DEFAULT 'hombre'",
+        "ALTER TABLE usuarios ADD COLUMN peso_kg_estimado REAL",
+        "ALTER TABLE usuarios ADD COLUMN bmr_estimado INTEGER",
+        "ALTER TABLE usuarios ADD COLUMN tdee_estimado INTEGER",
+        "ALTER TABLE usuarios ADD COLUMN actividad_nivel TEXT DEFAULT 'sedentario'",
+        "ALTER TABLE usuarios ADD COLUMN sueño_horas REAL DEFAULT 7.0",
+        "CREATE TABLE IF NOT EXISTS login_tokens (token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, used INTEGER DEFAULT 0)",
+        "CREATE TABLE IF NOT EXISTS analisis_historial (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, fecha TEXT NOT NULL, texto TEXT NOT NULL, tipo TEXT DEFAULT 'nocturno')",
+        "CREATE TABLE IF NOT EXISTS pesajes (Fecha TEXT PRIMARY KEY, Timestamp INTEGER UNIQUE, Peso_kg REAL, Grasa_Porcentaje REAL, Agua REAL, Musculo_Pct REAL, Musculo_kg REAL, BMR INTEGER, VisFat REAL, BMI REAL, EdadMetabolica INTEGER, FatFreeWeight REAL, Proteina REAL, MasaOsea REAL)",
+        "CREATE TABLE IF NOT EXISTS historico_dietas (fecha TEXT PRIMARY KEY, score_comp INTEGER, estado_mimo TEXT, kcal_mult REAL, calorias INTEGER, proteina INTEGER, carbs INTEGER, grasas INTEGER, dieta_html TEXT, delta_peso REAL)",
+        "CREATE TABLE IF NOT EXISTS config_nutricion (clave TEXT PRIMARY KEY, valor TEXT)",
+        "INSERT OR IGNORE INTO config_nutricion (clave, valor) VALUES ('kcal_mult','1.0')",
+    ]
+    with get_db() as conn:
+        for sql in MIGRACIONES:
+            try:
+                conn.execute(sql)
+            except Exception:
+                pass  # columna ya existe — ignorar
+
     logger.info("DB inicializada: %s", DB_PATH)
 
 # ── GYM ───────────────────────────────────────────────────────────────────────
