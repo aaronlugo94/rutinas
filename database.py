@@ -232,7 +232,12 @@ def clear_plan(user_id, keep_swaps=True):
     for tbl in ["rutinas","progreso","estado","sesion_activa","peso_flow"]:
         execute(f"DELETE FROM {tbl} WHERE user_id=?", (user_id,))
 
-def insert_plan(user_id, semanas, swaps, by_id):
+def insert_plan(user_id, semanas, swaps, by_id=None):
+    """
+    Inserta el plan completo en rutinas.
+    Acepta ejercicios con todos los campos (nuevo formato del planner)
+    o solo con ejercicio_id para buscar en by_id (formato legacy).
+    """
     clear_plan(user_id)
     swap_map = {s["original_id"]: s["nuevo_id"] for s in swaps if s.get("nuevo_id")}
     n = 0
@@ -241,16 +246,40 @@ def insert_plan(user_id, semanas, swaps, by_id):
             for dia_obj in sem["dias"]:
                 dia = dia_obj["dia"]
                 for orden, ej in enumerate(dia_obj["ejercicios"]):
-                    eid = swap_map.get(ej.get("id",""), ej.get("id",""))
-                    obj = by_id.get(eid)
-                    if not obj: continue
-                    conn.execute("""INSERT INTO rutinas
-                        (user_id,semana,dia,orden,ejercicio_id,ejercicio,patron,grupo,rol,series,reps,notas,emg_score,completado)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0)""",
-                        (user_id, sem["semana"], dia, orden,
-                         obj.id, obj.nombre, obj.patron, obj.grupo, obj.rol,
-                         ej.get("series",3), ej.get("reps","8-10"), obj.cue, obj.emg_score))
-                    n += 1
+                    # Soporte para ambos formatos
+                    eid = ej.get("ejercicio_id") or ej.get("id", "")
+                    eid = swap_map.get(eid, eid)
+
+                    # Grupo puede estar en el ejercicio o en el dia
+                    grupo = ej.get("grupo") or dia_obj.get("grupo", "")
+                    # Si el ejercicio ya tiene todos los datos — usar directo
+                    if ej.get("ejercicio") and grupo:
+                        conn.execute("""INSERT INTO rutinas
+                            (user_id,semana,dia,orden,ejercicio_id,ejercicio,patron,grupo,rol,series,reps,notas,emg_score,completado)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0)""",
+                            (user_id, sem["semana"], dia, orden,
+                             eid,
+                             ej.get("ejercicio",""),
+                             ej.get("patron",""),
+                             grupo,
+                             ej.get("rol","principal"),
+                             ej.get("series", 3),
+                             ej.get("reps","8-10"),
+                             ej.get("notas",""),
+                             ej.get("emg_score", 3)))
+                        n += 1
+                    elif by_id:
+                        # Formato legacy — buscar en catálogo
+                        obj = by_id.get(eid)
+                        if not obj:
+                            continue
+                        conn.execute("""INSERT INTO rutinas
+                            (user_id,semana,dia,orden,ejercicio_id,ejercicio,patron,grupo,rol,series,reps,notas,emg_score,completado)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0)""",
+                            (user_id, sem["semana"], dia, orden,
+                             obj.id, obj.nombre, obj.patron, obj.grupo, obj.rol,
+                             ej.get("series",3), ej.get("reps","8-10"), obj.cue, obj.emg_score))
+                        n += 1
     return n
 
 def get_ejercicios_dia(user_id, semana, dia):
