@@ -55,7 +55,16 @@ def init_db():
             nivel TEXT, objetivo TEXT, limitaciones TEXT DEFAULT 'ninguna',
             dias INTEGER DEFAULT 4, duracion_min INTEGER DEFAULT 60,
             ambiente_preferido TEXT DEFAULT 'gym', hora_recordatorio TEXT,
-            anos_entrenando INTEGER DEFAULT 0, pin TEXT);
+            anos_entrenando INTEGER DEFAULT 0, pin TEXT,
+            tipo_dieta TEXT DEFAULT 'omnivoro', alergias TEXT DEFAULT 'ninguna',
+            objetivo_vida TEXT,
+            edad INTEGER,
+            sexo TEXT DEFAULT 'hombre',
+            peso_kg_estimado REAL,
+            bmr_estimado INTEGER,
+            tdee_estimado INTEGER,
+            actividad_nivel TEXT DEFAULT 'sedentario',
+            sueño_horas REAL DEFAULT 7.0);
 
         CREATE TABLE IF NOT EXISTS estado (
             user_id INTEGER PRIMARY KEY, semana INTEGER DEFAULT 1,
