@@ -256,57 +256,49 @@ USA SOLO <b> e <i>. MÁXIMO 120 palabras."""
 
 def generar_mensaje_diario(m: dict, anterior: dict | None,
                            tend_7d: dict | None, analisis: str) -> str:
-    """Genera el mensaje diario de composición corporal para Telegram."""
+    """
+    Mensaje diario corto — solo lo que importa y cambió.
+    Sin repetir datos estáticos que no cambian día a día.
+    """
     score, desc = calcular_score({"Grasa_Porcentaje": m["grasa"],
                                   "Musculo_Pct": m["musculo_pct"],
                                   "VisFat": m["grasa_visceral"],
                                   "Agua": m["agua"]})
-
-    def delta(hoy, ant_val, invertir=False):
-        if ant_val is None:
-            return ""
-        diff = hoy - float(ant_val)
-        if abs(diff) < 0.05:
-            return " ⚪"
-        ok = (diff < 0) if invertir else (diff > 0)
-        return f" ({diff:+.1f}) {'🟢' if ok else '🔴'}"
-
-    dias_str = ""
     ant = anterior
-    if ant:
-        dias = (datetime.strptime(m["fecha_str"], "%Y-%m-%d") -
-                datetime.strptime(ant["Fecha"], "%Y-%m-%d")).days
-        dias_str = f" <i>vs hace {dias}d</i>"
 
-    tend_label = ""
+    # Solo mostrar delta de peso — lo más relevante cada día
+    peso_str = f"{m['peso']}kg"
+    if ant:
+        dp = m["peso"] - float(ant["Peso_kg"])
+        if abs(dp) >= 0.1:
+            emoji = "🟢" if dp < 0 else "🔴"
+            peso_str += f" ({dp:+.1f}kg) {emoji}"
+
+    # Tendencia 7 días
+    tend_str = ""
     if tend_7d and tend_7d.get("peso_prom"):
         diff = m["peso"] - float(tend_7d["peso_prom"])
-        if diff < -0.2:   tend_label = "📉 Tendencia: bajando"
-        elif diff > 0.2:  tend_label = "📈 Tendencia: subiendo"
-        else:             tend_label = "➡️ Tendencia: estable"
+        if diff < -0.3:   tend_str = " · 📉 bajando"
+        elif diff > 0.3:  tend_str = " · 📈 subiendo"
+        else:             tend_str = " · ➡️ estable"
 
-    # Evaluar MIMO si hay anterior
-    mimo = ""
+    # MIMO solo si hay cambio real
+    mimo_str = ""
     if ant:
         dp = m["peso"] - float(ant["Peso_kg"])
         dg = m["grasa"] - float(ant["Grasa_Porcentaje"])
         dm = m["musculo_pct"] - float(ant.get("Musculo_Pct") or 0)
         estado, mimo_desc = evaluar_mimo(dp, dg, dm)
-        mimo = f"\n<b>Estado:</b> {mimo_desc}"
+        if estado not in ("ZONA_GRIS",):
+            emoji_map = {"RECOMPOSICION":"🟣","CUTTING_LIMPIO":"🟢",
+                         "CATABOLISMO":"🔴","ESTANCAMIENTO":"🟡"}
+            mimo_str = f"\n{emoji_map.get(estado,'⚪')} {mimo_desc}"
 
     msg = (
-        f"<b>🧬 Reporte Corporal — {m['fecha_str']}</b>\n"
-        f"<b>Score:</b> {score}/100 — {desc}{dias_str}\n\n"
-        f"<b>Peso:</b> {m['peso']}kg{delta(m['peso'], ant['Peso_kg'] if ant else None, invertir=True)}"
-        f"  {tend_label}\n"
-        f"<b>Grasa:</b> {m['grasa']}%{delta(m['grasa'], ant['Grasa_Porcentaje'] if ant else None, invertir=True)}"
-        f"{clasificar(m['grasa'],'grasa_hombre')}\n"
-        f"<b>Músculo:</b> {m['musculo_pct']}%{delta(m['musculo_pct'], ant.get('Musculo_Pct') if ant else None)}\n"
-        f"<b>Visceral:</b> {m['grasa_visceral']}{clasificar(m['grasa_visceral'],'visceral')}\n"
-        f"<b>Agua:</b> {m['agua']}%{clasificar(m['agua'],'agua')}\n"
-        f"<b>BMR:</b> {m['bmr']} kcal\n"
-        f"{mimo}\n\n"
-        f"🧠 <b>Análisis:</b>\n{analisis}"
+        f"⚖️ <b>{m['fecha_str']}</b>  Score: {score}/100\n"
+        f"Peso: {peso_str}{tend_str}"
+        f"{mimo_str}\n\n"
+        f"🧠 {analisis}"
     )
     return msg
 
@@ -328,6 +320,17 @@ async def ejecutar_diario(bot=None, chat_id: int | None = None,
 
         if not es_nuevo:
             logger.info("💤 Pesaje duplicado — nada que hacer")
+            return False
+
+        # Anti-duplicado de envío: verificar que no hayamos mandado ya hoy
+        from datetime import datetime
+        hoy = datetime.now().strftime("%Y-%m-%d")
+        ya_enviado = db.fetchone(
+            "SELECT id FROM analisis_historial WHERE user_id=? AND fecha=? AND tipo='cuerpo'",
+            (chat_id, hoy)
+        ) if chat_id else None
+        if ya_enviado:
+            logger.info("💤 Reporte corporal ya enviado hoy a %s", chat_id)
             return False
 
         logger.info("🚀 Nuevo pesaje %s — generando análisis...", m["fecha_str"])
