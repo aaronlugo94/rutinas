@@ -122,44 +122,111 @@ def _datos_sesion(user_id: int, semana: int, dia: str) -> dict:
 
 
 async def _gemini_analisis(datos: dict, perfil: dict) -> str:
-    """Llama a Gemini con datos reales. Retorna análisis en 3-4 líneas."""
+    """
+    Coach IA real — no reportero.
+    Analiza patrones, conecta gym con composición corporal,
+    da UNA recomendación concreta y accionable para mañana.
+    """
     if not GEMINI_API_KEY:
         return _fallback_sin_gemini(datos)
 
     try:
         from google import genai
 
-        pesos_str    = "\n".join(datos["pesos"]) or "Sin registros"
+        # Datos de la sesión
+        pesos_str    = "\n".join(datos["pesos"]) or "Sin registros de peso"
         progs_str    = ", ".join(datos["progresiones"]) or "ninguna"
         sin_prog_str = ", ".join(datos["sin_progresion"]) or "ninguno"
-        fatiga_map   = {1: "muy fresco", 2: "normal", 3: "cansado", 4: "muy cansado", 5: "agotado"}
-        fatiga_str   = fatiga_map.get(datos["fatiga"], "no reportada")
+        fatiga_map   = {1:"muy fresco", 2:"normal", 3:"cansado", 4:"muy cansado", 5:"agotado"}
+        fatiga_str   = fatiga_map.get(datos.get("fatiga", 2), "normal")
 
-        prompt = f"""Eres un coach de gym. Analiza esta sesión y da feedback en 3-4 líneas MÁXIMO.
-Sé directo, específico, sin frases motivacionales genéricas.
+        # Datos de sueño
+        sueño_perfil = perfil.get("sueño_horas", 0)
+        sueño_str = ""
+        if sueño_perfil and sueño_perfil > 0:
+            if sueño_perfil < 6:
+                sueño_str = f"\nSUEÑO ANOCHE: {sueño_perfil}h — CRÍTICO para recuperación"
+            elif sueño_perfil < 7:
+                sueño_str = f"\nSUEÑO ANOCHE: {sueño_perfil}h — subóptimo"
+            else:
+                sueño_str = f"\nSUEÑO ANOCHE: {sueño_perfil}h — adecuado"
 
-DATOS DEL ENTRENAMIENTO:
-Grupo muscular: {datos['grupo']}
-Semana: {datos['semana']} de 4
-Racha: {datos['racha']} días
+        # Datos corporales si existen
+        pesaje = db.get_ultimo_pesaje()
+        cuerpo_str = ""
+        if pesaje:
+            cuerpo_str = (
+                f"\nCOMPOSICIÓN CORPORAL (último pesaje {pesaje.get('Fecha','')}):\n"
+                f"Peso: {pesaje.get('Peso_kg','?')} kg | "
+                f"Grasa: {pesaje.get('Grasa_Porcentaje','?')}% | "
+                f"Agua: {pesaje.get('Agua','?')}% | "
+                f"BMR: {pesaje.get('BMR','?')} kcal"
+            )
 
-PESOS USADOS HOY:
+        # Historial de progresión (últimas 4 semanas)
+        uid = datos.get("user_id")
+        patron_str = ""
+        if uid:
+            historial = db.fetchall("""
+                SELECT ejercicio_id, semana, MAX(peso_lbs) as peso
+                FROM pesos WHERE user_id=? 
+                GROUP BY ejercicio_id, semana
+                ORDER BY semana DESC LIMIT 20
+            """, (uid,))
+            if historial:
+                desde = {}
+                for row in historial:
+                    eid = row["ejercicio_id"]
+                    if eid not in desde:
+                        desde[eid] = {"semanas": [], "pesos": []}
+                    desde[eid]["semanas"].append(row["semana"])
+                    desde[eid]["pesos"].append(row["peso"])
+                estancados = [eid for eid, v in desde.items()
+                              if len(v["pesos"]) >= 2 and v["pesos"][0] == v["pesos"][1]]
+                if estancados:
+                    patron_str = f"\nESTANCAMIENTO DETECTADO en: {', '.join(estancados[:3])}"
+
+        # Perfil físico
+        obj_vida    = perfil.get("objetivo_vida", "general")
+        nivel       = perfil.get("nivel", "intermedio")
+        tdee_est    = perfil.get("tdee_estimado", 0)
+        actividad   = perfil.get("actividad_nivel", "sedentario")
+        semana_plan = datos.get("semana", 1)
+        es_deload   = semana_plan == 4
+
+        prompt = f"""Eres el coach personal de este usuario. Tienes acceso a sus datos reales. 
+Tu trabajo NO es motivar con frases genéricas — es analizar datos y decirle exactamente qué hacer.
+
+PERFIL:
+- Objetivo: {obj_vida} | Nivel: {nivel} | Actividad diaria: {actividad}
+- Semana {semana_plan}/4 del ciclo {'— SEMANA DE DELOAD' if es_deload else ''}
+- Racha de entrenamiento: {datos.get('racha', 0)} días consecutivos
+{f"- TDEE estimado: {tdee_est} kcal/día" if tdee_est else ""}
+
+HOY — {datos.get('grupo', '').upper()}:
+Fatiga reportada: {fatiga_str}
+
+PESOS USADOS:
 {pesos_str}
 
-PROGRESIONES (subió peso vs semana anterior):
+PROGRESIONES (subió vs semana anterior):
 {progs_str}
 
-SIN PROGRESIÓN (igual que semana anterior):
+SIN PROGRESIÓN:
 {sin_prog_str}
+{patron_str}
+{cuerpo_str}
 
-FATIGA REPORTADA: {fatiga_str}
+INSTRUCCIONES PARA TU RESPUESTA:
+1. Empieza con lo más importante que dicen los datos HOY (máx 1 línea)
+2. Si hay estancamiento en algún ejercicio, explica POR QUÉ puede estar pasando (fatiga acumulada, falta proteína, técnica, etc.)
+3. Da UNA sola acción concreta para MAÑANA — específica, con números si aplica
+4. Máximo 3-4 líneas en total. Sin listas. Sin bullet points. Texto corrido.
+5. Usa números reales de los datos. No inventes nada.
+6. Si es semana de deload: refuerza que NO suban pesos y explica la supercompensación.
+7. Si la fatiga es 4-5: recomienda priorizar sueño y proteína esa noche específicamente.
 
-Usuario: nivel {perfil.get('nivel','intermedio')}, objetivo {perfil.get('objetivo','general')}
-
-Responde en español. Máximo 4 líneas. Sin emojis excesivos. 
-Si hay progresiones, mencionarlas con números específicos.
-Si algo lleva semanas sin progresar, decirlo y sugerir algo concreto.
-Si la fatiga es alta, recomendar descanso específico."""
+Responde SOLO en español. Tono directo de coach, no de motivador."""
 
         client = genai.Client(api_key=GEMINI_API_KEY)
         resp   = client.models.generate_content(
@@ -206,6 +273,7 @@ async def msg_resumen_nocturno(user_id: int) -> str:
         )
 
     datos   = _datos_sesion(user_id, semana, dia)
+    datos["user_id"] = user_id
     perfil  = db.get_perfil(user_id)
     grupo   = datos["grupo"]
     icon    = GRUPO_ICON.get(grupo, "💪")
@@ -262,6 +330,19 @@ async def check_y_enviar(bot, hora_actual: str) -> None:
         hora = row.get("hora_recordatorio") or ""
 
         # ── Recordatorio mañana ───────────────────────────────────────────────
+        # Skip si está en modo pausa
+        if hora and hora.startswith("PAUSA:"):
+            from datetime import datetime, date
+            try:
+                fecha_ret = datetime.strptime(hora.split("PAUSA:")[1], "%d/%m/%Y").date()
+                if date.today() >= fecha_ret:
+                    # Pausa terminada — limpiar
+                    db.execute("UPDATE usuarios SET hora_recordatorio=NULL WHERE user_id=?", (uid,))
+                    logger.info("Pausa terminada para %s", uid)
+            except Exception:
+                pass
+            continue
+
         if hora and hora == hora_actual:
             try:
                 # Verificar inactividad antes de mandar recordatorio normal
