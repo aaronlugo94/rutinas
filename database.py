@@ -64,7 +64,8 @@ def init_db():
             bmr_estimado INTEGER,
             tdee_estimado INTEGER,
             actividad_nivel TEXT DEFAULT 'sedentario',
-            sueño_horas REAL DEFAULT 7.0);
+            sueño_horas REAL DEFAULT 7.0,
+            cocina_preferida TEXT DEFAULT 'variada');
 
         CREATE TABLE IF NOT EXISTS estado (
             user_id INTEGER PRIMARY KEY, semana INTEGER DEFAULT 1,
@@ -168,6 +169,7 @@ def init_db():
         "ALTER TABLE usuarios ADD COLUMN tdee_estimado INTEGER",
         "ALTER TABLE usuarios ADD COLUMN actividad_nivel TEXT DEFAULT 'sedentario'",
         "ALTER TABLE usuarios ADD COLUMN sueño_horas REAL DEFAULT 7.0",
+        "ALTER TABLE usuarios ADD COLUMN cocina_preferida TEXT DEFAULT 'variada'",
         "CREATE TABLE IF NOT EXISTS login_tokens (token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, used INTEGER DEFAULT 0)",
         "CREATE TABLE IF NOT EXISTS analisis_historial (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, fecha TEXT NOT NULL, texto TEXT NOT NULL, tipo TEXT DEFAULT 'nocturno')",
         "CREATE TABLE IF NOT EXISTS pesajes (Fecha TEXT PRIMARY KEY, Timestamp INTEGER UNIQUE, Peso_kg REAL, Grasa_Porcentaje REAL, Agua REAL, Musculo_Pct REAL, Musculo_kg REAL, BMR INTEGER, VisFat REAL, BMI REAL, EdadMetabolica INTEGER, FatFreeWeight REAL, Proteina REAL, MasaOsea REAL)",
@@ -206,7 +208,7 @@ def upsert_perfil(user_id, **kwargs):
         "nombre","genero","nivel","objetivo","limitaciones","dias","duracion_min",
         "ambiente_preferido","hora_recordatorio","anos_entrenando","pin",
         "tipo_dieta","alergias","objetivo_vida","edad","sexo",
-        "peso_kg_estimado","bmr_estimado","tdee_estimado","actividad_nivel","sueño_horas",
+        "peso_kg_estimado","bmr_estimado","tdee_estimado","actividad_nivel","sueño_horas","cocina_preferida",
     }
     kwargs = {k: v for k, v in kwargs.items() if k in COLUMNAS_VALIDAS}
     if not kwargs:
