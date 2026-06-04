@@ -562,16 +562,11 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
     if data.startswith("niv:"):
         nivel = data.split(":")[1]
         if nivel == "back":
-            perfil = db.get_perfil(uid)
-            desc   = OBJETIVOS.get(perfil.get("objetivo_vida",""), ("tu objetivo",))[0]
+            # Volver a selección de objetivo
             await query.edit_message_text(
-                f"<b>Objetivo: {desc} ✅</b>\n\n<b>¿Cuánto tiempo llevas entrenando?</b>",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🌱 Menos de 1 año",    callback_data="niv:principiante")],
-                    [InlineKeyboardButton("💪 1 a 3 años",        callback_data="niv:intermedio")],
-                    [InlineKeyboardButton("🔥 Más de 3 años",     callback_data="niv:avanzado")],
-                    [InlineKeyboardButton("← Atrás",              callback_data="vida:back")],
-                ]),
+                "<b>💪 ¿Cuál es tu objetivo principal?</b>\n\n"
+                "Sé honesto — el plan se ajusta completamente a esto:",
+                reply_markup=_kb_objetivos(),
                 parse_mode="HTML",
             )
             return
@@ -862,6 +857,26 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
         alerg = data.split(":")[1]
         db.upsert_perfil(uid, alergias=alerg)
 
+        # ── Pregunta cocina favorita ──────────────────────────────────────────
+        await query.edit_message_text(
+            f"<b>Restricción: {alerg.replace('_',' ')} ✅</b>\n\n"
+            "<b>¿Qué tipo de cocina disfrutas más?</b>\n\n"
+            "<i>Gemini usará esto para hacer el plan más apetecible y realista.</i>",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🌮 Mexicana / Latina",      callback_data="cocina:mexicana")],
+                [InlineKeyboardButton("🍝 Italiana / Mediterránea", callback_data="cocina:mediterranea")],
+                [InlineKeyboardButton("🍱 Asiática (japonesa/thai/china)", callback_data="cocina:asiatica")],
+                [InlineKeyboardButton("🥩 Americana / BBQ / Parrilla", callback_data="cocina:americana")],
+                [InlineKeyboardButton("🌍 Variada — me gusta de todo", callback_data="cocina:variada")],
+            ]),
+            parse_mode="HTML",
+        )
+        return
+
+    if data.startswith("cocina:"):
+        cocina = data.split(":")[1]
+        db.upsert_perfil(uid, cocina_preferida=cocina)
+
         # ── Generar plan de gym ───────────────────────────────────────────────
         await query.edit_message_text(
             "⚙️ <b>Creando tu plan...</b>\n\n<i>Analizando tu perfil. Tarda unos segundos.</i>",
@@ -895,19 +910,21 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
                 "gluteo":  f"Prioriza proteína: {round(peso_est*2.2)}g/día · ~{round(tdee_est*0.90)} kcal",
             }.get(obj, f"~{tdee_est} kcal/día · {round(peso_est*2.2)}g proteína")
 
-            txt_rutina, kb_rutina = ren.rutina_preview(uid, primera_sem, primer_dia)
+            # Mostrar confirmación
             await query.edit_message_text(
-                f"✅ <b>Plan listo</b> — {n_ej} ejercicios · 4 semanas\n\n"
-                f"💡 {rec}\n"
-                f"<i>El plan de nutrición detallado llega el próximo domingo con tus datos de la báscula.</i>\n\n"
-                f"{txt_rutina}",
-                reply_markup=kb_rutina,
+                f"✅ <b>¡Listo! Tu plan está creado.</b>\n\n"
+                f"📋 {n_ej} ejercicios · 4 semanas\n"
+                f"💡 {rec}\n\n"
+                f"<i>El domingo llega tu plan de nutrición personalizado.</i>",
                 parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("💪 Ver mi rutina de hoy", callback_data="menu:hoy")
+                ]])
             )
             # Instalar teclado persistente
             await context.bot.send_message(
                 chat_id      = query.message.chat_id,
-                text         = "Los botones de abajo siempre están disponibles 👇",
+                text         = "Usa los botones de abajo para navegar 👇",
                 reply_markup = ren.TECLADO_PERSISTENTE,
             )
         except Exception as e:
