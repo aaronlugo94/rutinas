@@ -391,7 +391,7 @@ async def _procesar_peso_texto(uid: int, texto: str, update, context) -> None:
 
 async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query  = update.callback_query
-    data   = query.data
+    data   = query.data or ""
     uid    = query.from_user.id
     nombre = query.from_user.first_name or ""
 
@@ -399,8 +399,31 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await query.answer("Sin acceso.")
         return
 
-    await query.answer()
-    semana, dia = db.get_estado(uid)
+    try:
+        await query.answer()
+    except Exception:
+        pass
+
+    try:
+        semana, dia = db.get_estado(uid)
+    except Exception:
+        semana, dia = 1, "lunes"
+
+    try:
+        await _callback_handler(update, context, query, data, uid, nombre, semana, dia)
+    except Exception as e:
+        logger.error("callback_router error [%s]: %s", data, e, exc_info=True)
+        try:
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text="❌ Algo salió mal. Escribe /start para continuar.",
+            )
+        except Exception:
+            pass
+
+
+async def _callback_handler(update, context, query, data, uid, nombre, semana, dia):
+    """Maneja todos los callbacks. Separado para capturar errores correctamente."""
 
     # ── MENÚ PRINCIPAL ────────────────────────────────────────────────────────
     if data.startswith("menu:"):
