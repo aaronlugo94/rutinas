@@ -143,9 +143,9 @@ PLANTILLAS: dict[str, dict[str, list[Slot]]] = {
             Slot("aislamiento", "biceps",           ("TIR_G06", "TIR_G08")),
         ],
         "intermedio": [
-            Slot("principal",   "jalon_vertical",   ("TIR_G11", "TIR_G01")),  # dominadas primero
-            Slot("principal",   "remo_horizontal",  ("TIR_G03", "TIR_G02")),
-            Slot("aislamiento", "hombro_posterior", ("TIR_G07",)),
+            Slot("principal",   "jalon_vertical",   ("TIR_G11", "TIR_G01", "TIR_G10")),  # dominadas, jalón
+            Slot("principal",   "remo_horizontal",  ("TIR_G03", "TIR_G02", "TIR_G12")),  # remo variantes
+            Slot("aislamiento", "hombro_posterior", ("TIR_G07", "TIR_G09")),
             Slot("aislamiento", "biceps",           ("TIR_G08", "TIR_G06")),  # martillo primero
         ],
         "avanzado": [
@@ -167,10 +167,10 @@ PLANTILLAS: dict[str, dict[str, list[Slot]]] = {
             Slot("aislamiento", None,           ("PIE_G04", "PIE_G07")),    # extensión o pantorrilla
         ],
         "intermedio": [
-            Slot("principal",   "sentadilla",       ("PIE_G06", "PIE_G02")),  # hack antes que Smith
-            Slot("principal",   "bisagra_cadera",   ("PIE_G12",)),            # RDL barra
-            Slot("principal",   "prensa",           ("PIE_G14", "PIE_G03")),  # pies altos
-            Slot("aislamiento", "curl_femoral",     ("PIE_G05", "PIE_G10")),
+            Slot("principal",   "sentadilla",       ("PIE_G06", "PIE_G02", "PIE_G01")),  # hack, Smith, sentadilla libre
+            Slot("principal",   "bisagra_cadera",   ("PIE_G12", "PIE_G11")),              # RDL, peso muerto conv
+            Slot("principal",   "prensa",           ("PIE_G14", "PIE_G03", "PIE_G15")),  # leg press variantes
+            Slot("aislamiento", "curl_femoral",     ("PIE_G05", "PIE_G10", "PIE_G09")),  # curl variantes
         ],
         "avanzado": [
             Slot("principal",   "sentadilla",       ("PIE_G01",), solo_nivel="avanzado"),  # barra libre
@@ -377,7 +377,8 @@ def _resolver_slot(
             and ya_patron.get(BY_ID[eid].patron, 0) < MAX_POR_PATRON.get(BY_ID[eid].patron, MAX_POR_PATRON_DEFAULT)
         ]
         if prefs_disponibles:
-            idx = (semana - 1) % len(prefs_disponibles)
+            # seed incluye base_seed aleatorio → variedad real entre planes
+            idx = (seed + semana - 1) % len(prefs_disponibles)
             return BY_ID[prefs_disponibles[idx]]
 
     # Pool general del catálogo
@@ -405,9 +406,16 @@ def _resolver_slot(
     if not pool:
         return None
 
-    pool.sort(key=lambda e: (-e.emg_score, e.id))
-    idx = (seed + (semana - 1)) % len(pool)
-    return pool[idx]
+    import random as _rnd
+    # Seed único por ejercicio — garantiza variedad real entre planes
+    _rnd.seed(seed)
+    # Incluir ejercicios con emg >= 3 para mayor variedad
+    # Ponderamos: emg 5 → peso 3x, emg 4 → peso 2x, emg 3 → peso 1x
+    weighted = []
+    for e in pool:
+        weight = max(1, e.emg_score - 2)  # 3→1, 4→2, 5→3
+        weighted.extend([e] * weight)
+    return _rnd.choice(weighted)
 
 
 def _cardio_ej(objetivo: str, ambiente: str, semana: int, duracion: str) -> dict:
@@ -586,6 +594,10 @@ def generar_plan(
         split = SPLITS["general"].get(4, ["pierna","empuje","tiron","pierna"])
     nombres = DIAS_NOMBRES.get(dias, DIAS_NOMBRES[4])[:len(split)]
 
+    # Seed aleatorio para que cada plan sea diferente aunque los parámetros sean iguales
+    import random as _rnd
+    base_seed = _rnd.randint(1000, 9999)
+
     semanas = []
     for num_semana in range(1, 5):
         dias_sem    = []
@@ -596,7 +608,7 @@ def generar_plan(
                 num_g = cnt_gluteo
             else:
                 num_g = 0
-            seed = num_semana * 100 + i * 10
+            seed = base_seed + num_semana * 100 + i * 10
             dia_data = _generar_dia(
                 dia_nombre     = dia_n,
                 grupo          = grupo,
