@@ -800,9 +800,8 @@ async def _run_bot(token: str) -> None:
     import handlers as h
     from telegram.ext import Application
 
-    h.load_allowed_users()
     bot_app = Application.builder().token(token).build()
-    h.register_handlers(bot_app)
+    h.register(bot_app)
 
     import notificaciones as notif
 
