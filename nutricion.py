@@ -380,13 +380,61 @@ def get_plan_actual() -> dict | None:
     }
 
 
-def get_macros_hoy() -> dict | None:
-    """Macros del día actual según el último pesaje."""
+def get_macros_hoy(user_id: int | None = None) -> dict | None:
+    """
+    Macros del día. Fuente de datos en orden de precisión:
+    1. Báscula Renpho (más preciso — FFM real)
+    2. Perfil del usuario (BMR estimado con Mifflin-St Jeor)
+    3. Fallback genérico (sin datos)
+    """
     pesaje = db.get_ultimo_pesaje()
-    if not pesaje:
-        return None
-    peso  = pesaje.get("Peso_kg", 0)
-    ffm   = pesaje.get("FatFreeWeight") or (peso * (1 - (pesaje.get("Grasa_Porcentaje", 30)/100)))
-    bmr   = pesaje.get("BMR") or round(peso * 22)
-    mult  = db.get_multiplicador()
-    return calcular_macros(float(peso), float(ffm), float(mult), int(bmr))
+    if pesaje and pesaje.get("Peso_kg"):
+        peso  = float(pesaje["Peso_kg"])
+        grasa = float(pesaje.get("Grasa_Porcentaje") or 30)
+        ffm   = float(pesaje.get("FatFreeWeight") or (peso * (1 - grasa/100)))
+        bmr   = int(pesaje.get("BMR") or round(peso * 22))
+        mult  = db.get_multiplicador()
+        macros = calcular_macros(peso, ffm, mult, bmr)
+        macros["fuente"] = "bascula"
+        return macros
+
+    # Sin báscula — usar perfil
+    if user_id:
+        perfil = db.get_perfil(user_id)
+        peso   = float(perfil.get("peso_kg_estimado") or 90)
+        sexo   = perfil.get("sexo", "hombre")
+        edad   = int(perfil.get("edad") or 30)
+        altura = 175 if sexo == "hombre" else 163
+        act    = perfil.get("actividad_nivel", "sedentario")
+
+        # Mifflin-St Jeor
+        if sexo == "hombre":
+            bmr = round(10 * peso + 6.25 * altura - 5 * edad + 5)
+        else:
+            bmr = round(10 * peso + 6.25 * altura - 5 * edad - 161)
+
+        factor = {"sedentario": 1.2, "moderado": 1.375, "activo": 1.55}.get(act, 1.2)
+        tdee   = round(bmr * factor)
+
+        # Objetivo determina déficit/superávit
+        obj = perfil.get("objetivo", "general")
+        cals_objetivo = {
+            "peso":    round(tdee * 0.82),   # -18% déficit moderado
+            "mamado":  round(tdee * 1.10),   # +10% superávit lean bulk
+            "general": round(tdee * 0.90),   # -10% recomposición
+            "gluteo":  round(tdee * 0.95),   # -5% leve déficit
+        }.get(obj, round(tdee * 0.90))
+
+        # FFM estimada (asume 30% grasa para hombre promedio, 28% mujer)
+        grasa_est = 0.28 if sexo == "mujer" else 0.30
+        ffm_est   = peso * (1 - grasa_est)
+
+        # Multiplicador = calorías / peso
+        mult_est = cals_objetivo / peso
+        macros   = calcular_macros(peso, ffm_est, mult_est, bmr)
+        macros["fuente"]   = "estimado"
+        macros["nota"]     = "⚠️ Basado en estimaciones — pésate para mayor precisión"
+        macros["tdee"]     = tdee
+        return macros
+
+    return None
