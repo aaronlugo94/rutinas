@@ -22,7 +22,7 @@ WEB_URL = os.environ.get("FRONTEND_URL", "https://rutinas-nine.vercel.app")
 TECLADO_PERSISTENTE = ReplyKeyboardMarkup(
     [
         ["💪 Rutina de hoy",  "⚖️ Mi cuerpo"],
-        ["🥗 Mi dieta",       "🆕 Nuevo plan"],
+        ["🥗 Mi dieta",       "❓ Ayuda"],
     ],
     resize_keyboard  = True,
     is_persistent    = True,
@@ -35,7 +35,7 @@ MENU_PRINCIPAL = InlineKeyboardMarkup([
     [InlineKeyboardButton("⚖️ Mi cuerpo",        callback_data="menu:cuerpo"),
      InlineKeyboardButton("🥗 Mi dieta",         callback_data="menu:dieta")],
     [InlineKeyboardButton("🌐 Ver todo →",       url=WEB_URL),
-     InlineKeyboardButton("🆕 Nuevo plan",       callback_data="menu:nuevo")],
+     InlineKeyboardButton("❓ Ayuda",            callback_data="ver_ayuda")],
 ])
 
 # ── Ayuda ─────────────────────────────────────────────────────────────────────
@@ -117,7 +117,8 @@ def rutina_preview(user_id: int, semana: int, dia: str) -> tuple[str, InlineKeyb
         [InlineKeyboardButton("▶ Empezar sesión",  callback_data=f"ej_start:{semana}:{dia}")],
         [InlineKeyboardButton("⏭ Saltar este día", callback_data=f"skip_day:{semana}:{dia}"),
          InlineKeyboardButton("❓ Ayuda",           callback_data="ver_ayuda")],
-        [InlineKeyboardButton("🏠 Menú",           callback_data="menu:main")],
+        [InlineKeyboardButton("🆕 Nuevo plan",      callback_data="menu:nuevo"),
+         InlineKeyboardButton("🏠 Menú",           callback_data="menu:main")],
     ])
 
     return "\n".join(lines), kb
