@@ -192,6 +192,7 @@ MACROS DIARIOS:
 
 RESTRICCIONES ALIMENTARIAS: {perfil.get('alergias','ninguna').replace('_',' ')}
 TIPO DE DIETA: {perfil.get('tipo_dieta','omnivoro')}
+COCINA PREFERIDA: {perfil.get('cocina_preferida','variada')} — INCORPORA ingredientes y recetas de esta cocina
 
 RESTRICCIONES DE ESTILO DE VIDA (OBLIGATORIAS):
 1. LUNES, MIÉRCOLES, JUEVES (Oficina + Gym 45 min): cenas saciantes y altas en proteína
