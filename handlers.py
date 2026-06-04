@@ -412,11 +412,15 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     try:
         await _callback_handler(update, context, query, data, uid, nombre, semana, dia)
     except Exception as e:
+        err_str = str(e)
+        # Ignorar error inofensivo de Telegram — mismo contenido
+        if "Message is not modified" in err_str:
+            return
         logger.error("callback_router error [%s]: %s", data, e, exc_info=True)
         try:
             await context.bot.send_message(
                 chat_id=query.message.chat_id,
-                text="❌ Algo salió mal. Escribe /start para continuar.",
+                text="❌ Algo salió mal. Escribe /start para reintentar.",
             )
         except Exception:
             pass
@@ -855,22 +859,29 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
             perfil = db.get_perfil(uid)
             import planner as pl
             swaps  = db.get_swaps(uid)
-            plan   = pl.generar_plan(perfil)
-            by_id  = {e.id: e for e in cat.EJERCICIOS}
-            n_ej   = db.insert_plan(uid, plan["semanas"], swaps, by_id)
-            primera_sem = plan["semanas"][0]["semana"]
-            primer_dia  = plan["semanas"][0]["dias"][0]["dia"]
+            plan   = pl.generar_plan(
+                nivel      = perfil.get("nivel", "intermedio"),
+                objetivo   = perfil.get("objetivo", "general"),
+                dias       = int(perfil.get("dias") or 4),
+                ambiente   = perfil.get("ambiente_preferido", "gym"),
+                limitacion = perfil.get("limitaciones", "ninguna"),
+            )
+            by_id  = cat.BY_ID
+            n_ej   = db.insert_plan(uid, plan, swaps, by_id)
+            primera_sem = plan[0]["semana"]
+            primer_dia  = plan[0]["dias"][0]["dia"]
             db.upsert_estado(uid, primera_sem, primer_dia)
 
             # Recomendación calórica basada en objetivo
-            obj = perfil.get("objetivo", "general")
-            peso_est = 90  # estimado si no hay báscula aún
+            obj      = perfil.get("objetivo", "general")
+            peso_est = float(perfil.get("peso_kg_estimado") or 90)
+            tdee_est = int(perfil.get("tdee_estimado") or round(peso_est * 30))
             rec = {
-                "peso":    f"Para bajar grasa: apunta a ~{round(peso_est*28)} kcal/día",
-                "mamado":  f"Para ganar músculo: apunta a ~{round(peso_est*33)} kcal/día",
-                "general": f"Para recomposición: apunta a ~{round(peso_est*30)} kcal/día",
-                "gluteo":  f"Prioriza proteína: mínimo {round(peso_est*2.2)}g/día",
-            }.get(obj, "")
+                "peso":    f"Para bajar grasa: ~{round(tdee_est*0.82)} kcal/día · {round(peso_est*2.2)}g proteína",
+                "mamado":  f"Para ganar músculo: ~{round(tdee_est*1.10)} kcal/día · {round(peso_est*2.2)}g proteína",
+                "general": f"Para recomposición: ~{round(tdee_est*0.90)} kcal/día · {round(peso_est*2.2)}g proteína",
+                "gluteo":  f"Prioriza proteína: {round(peso_est*2.2)}g/día · ~{round(tdee_est*0.90)} kcal",
+            }.get(obj, f"~{tdee_est} kcal/día · {round(peso_est*2.2)}g proteína")
 
             txt_rutina, kb_rutina = ren.rutina_preview(uid, primera_sem, primer_dia)
             await query.edit_message_text(
@@ -889,9 +900,15 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
             )
         except Exception as e:
             logger.error("Error generando plan: %s", e, exc_info=True)
-            await query.edit_message_text(
-                "❌ Error generando el plan. Escribe /start para reintentar.",
-            )
+            try:
+                await query.edit_message_text(
+                    f"❌ Error: {str(e)[:200]}\n\nEscribe /start para reintentar.",
+                )
+            except Exception:
+                await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=f"❌ Error: {str(e)[:200]}\n\nEscribe /start.",
+                )
         return
 
     # ── DIETA: REGENERAR ─────────────────────────────────────────────────────
