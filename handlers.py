@@ -243,7 +243,7 @@ async def handler_texto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "💪 Rutina de hoy": "hoy",
         "⚖️ Mi cuerpo":     "cuerpo",
         "🥗 Mi dieta":      "dieta",
-        "🆕 Nuevo plan":    "nuevo",
+        "❓ Ayuda":          "ayuda",
     }
     if texto in BOTONES:
         await _accion_menu(uid, BOTONES[texto], update.message)
@@ -352,6 +352,13 @@ async def _accion_menu(uid: int, accion: str, msg) -> None:
                 [InlineKeyboardButton("🔄 Los dos",               callback_data="reset:todo")],
                 [InlineKeyboardButton("❌ Cancelar",              callback_data="menu:main")],
             ])
+        )
+
+    elif accion == "ayuda":
+        await msg.reply_text(
+            "❓ <b>¿Qué necesitas?</b>\n\nComandos:\n<code>/start</code> — Menú principal\n<code>/login</code> — Entrar a la web\n<code>/sethorario</code> — Cambiar recordatorio\n<code>/reset_plan</code> — Cambiar rutina o dieta",
+            parse_mode="HTML",
+            reply_markup=ren.AYUDA_KB,
         )
 
 
@@ -826,13 +833,18 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
         desc = DIETAS.get(tipo, tipo)
         await query.edit_message_text(
             f"<b>Dieta: {desc} ✅</b>\n\n"
-            "<b>¿Hay algo que no puedas comer o quieras evitar?</b>",
+            "<b>¿Hay algo que no puedas comer o quieras evitar?</b>\n"
+            "<i>Puedes combinar — escoge la principal.</i>",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("✅ Ninguna — como de todo",   callback_data="alerg:ninguna")],
-                [InlineKeyboardButton("🥛 Sin lácteos",              callback_data="alerg:lacteos")],
-                [InlineKeyboardButton("🌾 Sin gluten / celíaco",     callback_data="alerg:gluten")],
-                [InlineKeyboardButton("🦐 Sin mariscos",             callback_data="alerg:mariscos")],
-                [InlineKeyboardButton("← Atrás",                     callback_data="nut:back")],
+                [InlineKeyboardButton("✅ Ninguna — como de todo",        callback_data="alerg:ninguna")],
+                [InlineKeyboardButton("🥛 Sin lácteos",                   callback_data="alerg:lacteos")],
+                [InlineKeyboardButton("🌾 Sin gluten / celíaco",          callback_data="alerg:gluten")],
+                [InlineKeyboardButton("🥜 Alergia a maní / frutos secos", callback_data="alerg:frutos_secos")],
+                [InlineKeyboardButton("🥚 Sin huevo",                     callback_data="alerg:huevo")],
+                [InlineKeyboardButton("🦐 Sin mariscos / pescado",        callback_data="alerg:mariscos")],
+                [InlineKeyboardButton("🐖 Sin cerdo (religioso/cultural)",callback_data="alerg:cerdo")],
+                [InlineKeyboardButton("🫘 Sin leguminosas",               callback_data="alerg:leguminosas")],
+                [InlineKeyboardButton("← Atrás",                          callback_data="nut:back")],
             ]),
             parse_mode="HTML",
         )
