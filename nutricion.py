@@ -139,6 +139,18 @@ def calcular_macros(peso: float, fat_free_weight: float, mult: float,
 
 # ── GENERACIÓN DE PLAN IA ─────────────────────────────────────────────────────
 
+# Tabla de equivalencias de proteína — se inyecta en el prompt de Gemini
+EQUIVALENCIAS_PROTEINA = """
+FUENTES DE PROTEÍNA (g por 100g cocinado):
+Pollo pechuga: 31g | Atún en agua: 30g | Res magra: 26g | Salmón: 25g
+Huevo entero: 13g (1 huevo = 6g prot) | Camarón: 24g | Sardinas: 25g
+Queso cottage: 11g | Yogur griego: 10g | Leche (250ml): 8g
+Frijoles/Lentejas cocinados: 9g | Tofu firme: 17g | Edamame: 11g
+Whey protein: 1 scoop (30g) = 24g proteína
+EQUIVALENCIAS: 1 pechuga mediana (150g) = 47g | 1 lata atún = 51g | 3 huevos = 18g
+"""
+
+
 def generar_plan_ia(peso: float, grasa: float, visceral: float, agua: float,
                     fat_free_weight: float, macros: dict, bmr: int,
                     delta_peso: float, delta_grasa: float, delta_musculo: float,
@@ -175,6 +187,11 @@ PERFIL ACTUAL:
 MACROS DIARIOS:
 - Calorías: {macros['calorias']} kcal | Proteína: {macros['proteina']}g | Carbs: {macros['carbs']}g | Grasas: {macros['grasas']}g
 - MÍNIMO ABSOLUTO: {bmr} kcal (BMR real)
+
+{EQUIVALENCIAS_PROTEINA}
+
+RESTRICCIONES ALIMENTARIAS: {perfil.get('alergias','ninguna').replace('_',' ')}
+TIPO DE DIETA: {perfil.get('tipo_dieta','omnivoro')}
 
 RESTRICCIONES DE ESTILO DE VIDA (OBLIGATORIAS):
 1. LUNES, MIÉRCOLES, JUEVES (Oficina + Gym 45 min): cenas saciantes y altas en proteína
