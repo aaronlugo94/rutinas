@@ -478,7 +478,7 @@ WEB_URL = os.environ.get("FRONTEND_URL", "https://gymcoach.vercel.app")
 TECLADO_PERSISTENTE = ReplyKeyboardMarkup(
     [
         ["💪 Rutina de hoy", "⚖️ Mi cuerpo"],
-        ["🥗 Mi dieta",      "🌐 Web"],
+        ["🥗 Mi dieta",      "🆕 Nuevo plan"],
     ],
     resize_keyboard   = True,
     is_persistent     = True,
@@ -486,11 +486,21 @@ TECLADO_PERSISTENTE = ReplyKeyboardMarkup(
 )
 
 # ── Inline menu — para mostrar info rápida en la ventana ─────────────────────
+AYUDA_KB = InlineKeyboardMarkup([
+    [InlineKeyboardButton("💪 Ver mi rutina",      callback_data="menu:hoy")],
+    [InlineKeyboardButton("🆕 Crear nuevo plan",   callback_data="menu:nuevo")],
+    [InlineKeyboardButton("⏰ Cambiar horario",    callback_data="ayuda:horario")],
+    [InlineKeyboardButton("✈️ Modo viaje / Pausa", callback_data="ayuda:pausa")],
+    [InlineKeyboardButton("🌐 Entrar a la web",    callback_data="ayuda:login")],
+    [InlineKeyboardButton("🏠 Menú principal",     callback_data="menu:main")],
+])
+
 MENU_PRINCIPAL = InlineKeyboardMarkup([
     [InlineKeyboardButton("💪 Rutina de hoy",       callback_data="menu:hoy")],
-    [InlineKeyboardButton("⚖️ Mi cuerpo",            callback_data="menu:cuerpo")],
-    [InlineKeyboardButton("🥗 Mi dieta de hoy",     callback_data="menu:dieta")],
-    [InlineKeyboardButton("🌐 Ver todo →",           url=WEB_URL)],
+    [InlineKeyboardButton("⚖️ Mi cuerpo",            callback_data="menu:cuerpo"),
+     InlineKeyboardButton("🥗 Mi dieta",             callback_data="menu:dieta")],
+    [InlineKeyboardButton("🌐 Ver todo →",           url=WEB_URL),
+     InlineKeyboardButton("🆕 Nuevo plan",           callback_data="menu:nuevo")],
 ])
 
 # Botón único de regreso — sin duplicar
