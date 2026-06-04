@@ -471,11 +471,22 @@ async def _post_pesos(uid: int, semana: int, dia: str, query, context) -> None:
         [InlineKeyboardButton("😌 Fácil — podía más",       callback_data=f"sesion:{semana}:{dia}:3:2")],
         [InlineKeyboardButton("😓 Muy cansado hoy",         callback_data=f"sesion:{semana}:{dia}:2:4")],
     ])
-    await query.edit_message_text(
-        msg_wow + "\n\n<b>¿Cómo estuvo la sesión?</b>",
-        reply_markup=teclado,
-        parse_mode="HTML",
-    )
+    # Usar send_message en lugar de edit — el cardio es un mensaje separado
+    # y edit_message_text falla silenciosamente en ese contexto
+    try:
+        await query.edit_message_text(
+            msg_wow + "\n\n<b>¿Cómo estuvo la sesión?</b>",
+            reply_markup=teclado,
+            parse_mode="HTML",
+        )
+    except Exception:
+        # Fallback: mandar mensaje nuevo si edit falla
+        await context.bot.send_message(
+            chat_id    = query.message.chat_id,
+            text       = msg_wow + "\n\n<b>¿Cómo estuvo la sesión?</b>",
+            reply_markup = teclado,
+            parse_mode = "HTML",
+        )
 
 
 async def _handle_peso_texto(uid: int, texto: str, update, context) -> None:
@@ -679,34 +690,6 @@ async def cb_ver_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await query.answer()
     texto = (
         "<b>Cómo usar GymCoach</b>\n\n"
-        "1️⃣ Entrena todos los ejercicios de la rutina\n"
-        "2️⃣ Toca <b>✅ Terminé</b> al acabar\n"
-        "3️⃣ Escribe cuántas lbs usaste en cada ejercicio\n"
-        "   (escribe 0 para saltar uno)\n"
-        "4️⃣ Dinos cómo estuvo la sesión\n\n"
-        "<b>Botones</b>\n"
-        "🔄 — Cambiar ese ejercicio por otro\n"
-        "✅ Terminé — Cerrar la sesión\n"
-        "📊 Stats — Tu progreso\n"
-        "📋 Plan — Ver las 4 semanas\n\n"
-        "<b>¿Qué es RIR?</b>\n"
-        "Reps que te sobraban al terminar el último set\n"
-        "RIR 0 = lo diste todo\n"
-        "RIR 2 = podías hacer 2 más\n"
-        "RIR 3+ = estaba fácil, sube el peso\n\n"
-        "<b>¿Qué pasa si salto un día?</b>\n"
-        "Nada. Vuelve cuando puedas, el plan sigue donde lo dejaste."
-    )
-    await query.edit_message_text(
-        texto, reply_markup=ren.MENU_PRINCIPAL, parse_mode="HTML",
-    )
-
-
-async def cb_ver_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    await query.answer()
-    texto = (
-        "<b>Cómo usar GymCoach</b>\n\n"
 
         "<b>Flujo básico</b>\n"
         "1. Toca <b>💪 Rutina de hoy</b>\n"
@@ -733,6 +716,81 @@ async def cb_ver_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
     await query.edit_message_text(
         texto, reply_markup=ren.MENU_PRINCIPAL, parse_mode="HTML",
+    )
+
+
+async def cb_ayuda_horario(update, context):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text(
+        "⏰ ¿A qué hora quieres el recordatorio matutino?",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🌅 6:00 AM", callback_data="rec:06:00"),
+             InlineKeyboardButton("🌅 7:00 AM", callback_data="rec:07:00"),
+             InlineKeyboardButton("🌅 8:00 AM", callback_data="rec:08:00")],
+            [InlineKeyboardButton("☀️ 12:00 PM", callback_data="rec:12:00"),
+             InlineKeyboardButton("🌆 5:00 PM",  callback_data="rec:17:00"),
+             InlineKeyboardButton("🌆 6:00 PM",  callback_data="rec:18:00")],
+            [InlineKeyboardButton("🌙 7:00 PM",  callback_data="rec:19:00"),
+             InlineKeyboardButton("🌙 8:00 PM",  callback_data="rec:20:00"),
+             InlineKeyboardButton("🌙 9:00 PM",  callback_data="rec:21:00")],
+            [InlineKeyboardButton("❌ Sin recordatorio", callback_data="rec:none")],
+        ])
+    )
+
+
+async def cb_ayuda_login(update, context):
+    query = update.callback_query
+    uid   = query.from_user.id
+    await query.answer()
+    token = db.create_login_token(uid)
+    from renderer import WEB_URL
+    url   = f"{WEB_URL}/auth?token={token}"
+    await query.edit_message_text(
+        "Toca el botón para entrar a la web 👇\n<i>Link válido por 5 minutos.</i>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🌐 Entrar a la web", url=url)],
+            [InlineKeyboardButton("← Atrás", callback_data="ver_ayuda")],
+        ])
+    )
+
+
+async def cb_ayuda_pausa(update, context):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text(
+        "✈️ <b>Modo viaje / Pausa</b>\n\n"
+        "¿Cuántos días pausar las notificaciones?\n"
+        "<i>Tu plan y tus pesos te esperan cuando vuelvas.</i>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("3 días",  callback_data="pausa:3"),
+             InlineKeyboardButton("7 días",  callback_data="pausa:7")],
+            [InlineKeyboardButton("14 días", callback_data="pausa:14"),
+             InlineKeyboardButton("30 días", callback_data="pausa:30")],
+            [InlineKeyboardButton("← Atrás", callback_data="ver_ayuda")],
+        ])
+    )
+
+
+async def cb_pausa(update, context):
+    query = update.callback_query
+    uid   = query.from_user.id
+    await query.answer()
+    dias = int(query.data.split(":")[1])
+    from datetime import datetime, timedelta
+    fecha_retorno = (datetime.now() + timedelta(days=dias)).strftime("%d/%m/%Y")
+    db.execute("UPDATE usuarios SET hora_recordatorio=? WHERE user_id=?",
+               (f"PAUSA:{fecha_retorno}", uid))
+    await query.edit_message_text(
+        f"✈️ <b>Pausa — {dias} días</b>\n\n"
+        f"Sin notificaciones hasta el <b>{fecha_retorno}</b>.\n"
+        f"Para reactivar usa /sethorario.",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("🏠 Menú", callback_data="menu:main")
+        ]])
     )
 
 
@@ -1198,8 +1256,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if nav:
             filas.append(nav)
         filas.append([
-            InlineKeyboardButton("✖ Cancelar", callback_data=f"swp_cancel:{sem_s}:{dia}"),
-            InlineKeyboardButton("🏠 Menú",    callback_data="menu:main"),
+            InlineKeyboardButton("✖ Cancelar — volver", callback_data=f"swp_cancel:{sem_s}:{dia}"),
         ])
 
         await query.edit_message_text(
@@ -1212,7 +1269,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if data.startswith("swp_do:"):
         _, id_orig, id_nuevo, sem_s, dia = data.split(":")
         sem = int(sem_s)
-        await query.answer("✅ Ejercicio actualizado en todo el plan")
+        await query.answer()
         ej_orig = cat.BY_ID.get(id_orig)
         ej_new  = cat.BY_ID.get(id_nuevo)
         if ej_orig and ej_new:
@@ -1226,10 +1283,24 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     "DELETE FROM progreso WHERE user_id=? AND ejercicio_id=?", (uid, id_orig),
                 )
             db.save_swap(uid, id_orig, id_nuevo, ej_orig.grupo, ej_orig.rol)
-        texto, teclado = ren.rutina_html(uid, sem, dia)
-        await query.edit_message_text(
-            texto, reply_markup=teclado, parse_mode="HTML", disable_web_page_preview=True,
-        )
+
+            # Mostrar confirmación + rutina actualizada
+            sesion = db.get_sesion_activa(uid)
+            if sesion and sesion["semana"] == sem and sesion["dia"] == dia:
+                # En sesión activa → regresar al ejercicio actual
+                texto, teclado = ren.render_ejercicio(uid, sem, dia, sesion["ej_idx"])
+                confirmacion = f"✅ <b>{ej_new.nombre}</b> reemplaza a {ej_orig.nombre}\n\n"
+            else:
+                # En preview → regresar al preview
+                texto, teclado = ren.rutina_preview(uid, sem, dia)
+                confirmacion = f"✅ <b>{ej_new.nombre}</b> reemplaza a {ej_orig.nombre}\n\n"
+
+            await query.edit_message_text(
+                confirmacion + texto,
+                reply_markup=teclado,
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
         return
 
     if data.startswith("swp_cancel:"):
@@ -1597,7 +1668,11 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(cb_ver_ayuda,   pattern="^ver_ayuda$"))
     # ver_fatiga removed — replaced by contextual help
     app.add_handler(CallbackQueryHandler(cb_ver_ayuda,   pattern="^ver_ayuda$"))
-    app.add_handler(CallbackQueryHandler(cb_ver_stats,   pattern="^ver_stats$"))
+    app.add_handler(CallbackQueryHandler(cb_ver_stats,    pattern="^ver_stats$"))
+    app.add_handler(CallbackQueryHandler(cb_ayuda_horario, pattern="^ayuda:horario$"))
+    app.add_handler(CallbackQueryHandler(cb_ayuda_login,   pattern="^ayuda:login$"))
+    app.add_handler(CallbackQueryHandler(cb_ayuda_pausa,   pattern="^ayuda:pausa$"))
+    app.add_handler(CallbackQueryHandler(cb_pausa,         pattern="^pausa:"))
     app.add_handler(CallbackQueryHandler(cb_ver_resumen, pattern="^ver_resumen$"))
     app.add_handler(CallbackQueryHandler(cb_ver_volumen, pattern="^ver_volumen$"))
     app.add_handler(CallbackQueryHandler(callback_router))
