@@ -168,6 +168,16 @@ def get_perfil(user_id):
     return dict(row) if row else {}
 
 def upsert_perfil(user_id, **kwargs):
+    # Columnas válidas — filtrar kwargs desconocidos para evitar errores de schema
+    COLUMNAS_VALIDAS = {
+        "nombre","genero","nivel","objetivo","limitaciones","dias","duracion_min",
+        "ambiente_preferido","hora_recordatorio","anos_entrenando","pin",
+        "tipo_dieta","alergias","objetivo_vida","edad","sexo",
+        "peso_kg_estimado","bmr_estimado","tdee_estimado","actividad_nivel","sueño_horas",
+    }
+    kwargs = {k: v for k, v in kwargs.items() if k in COLUMNAS_VALIDAS}
+    if not kwargs:
+        return
     perfil = get_perfil(user_id) or {}
     perfil.update(kwargs)
     perfil["user_id"] = user_id
