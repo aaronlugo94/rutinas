@@ -181,7 +181,7 @@ def rutina_hoy(uid: int = Depends(get_current_user)) -> dict:
             "dia":      dia,
             "semana":   semana,
             "opciones": [
-                {"emoji": o[0], "nombre": o[1], "desc": o[2]}
+                {"emoji": "", "nombre": o[0], "desc": o[1]}
                 for o in RECOVERY_OPCIONES
             ],
         }
@@ -739,6 +739,22 @@ def get_macros(uid: int = Depends(get_current_user)) -> dict:
     if not macros:
         return {"tiene_datos": False}
     return {"tiene_datos": True, **macros}
+
+
+@app.post("/nutricion/generar")
+async def generar_plan_manual(uid: int = Depends(get_current_user)) -> dict:
+    """Genera el plan de nutrición manualmente (no esperar al domingo)."""
+    import nutricion as nut
+    # Obtener datos gym para el análisis cruzado
+    racha = 0
+    try:
+        import gamification as gam
+        racha = gam.get_racha(uid)
+    except Exception:
+        pass
+    datos_gym = {"racha": racha, "sesiones": 0, "grupos": []}
+    ok = await nut.ejecutar_dominical(bot=None, chat_id=uid, datos_gym=datos_gym)
+    return {"generado": ok}
 
 
 @app.get("/health")
