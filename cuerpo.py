@@ -341,7 +341,7 @@ async def ejecutar_diario(bot=None, chat_id: int | None = None,
         es_nuevo = db.guardar_pesaje(m)
 
         if not es_nuevo:
-            logger.info("💤 Pesaje duplicado — nada que hacer")
+            logger.debug("💤 Pesaje duplicado")
             return False
 
         # Anti-duplicado de envío: verificar que no hayamos mandado ya hoy
