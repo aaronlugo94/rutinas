@@ -543,6 +543,21 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
         return
 
     # ── ONBOARDING GYM ────────────────────────────────────────────────────────
+    if data == "vida:back":
+        logger.info("vida:back triggered")
+        try:
+            await query.message.delete()
+        except Exception as e:
+            logger.warning("vida:back delete failed: %s", e)
+        await context.bot.send_message(
+            chat_id      = query.message.chat_id,
+            text         = "<b>Paso 1/8 — ¿Cuál es tu objetivo?</b>\n\n"
+                           "El plan se ajusta completamente a esto:",
+            reply_markup = _kb_objetivos(),
+            parse_mode   = "HTML",
+        )
+        return
+
     if data.startswith("vida:"):
         objetivo_vida = data.split(":")[1]
         _, objetivo_gym = OBJETIVOS.get(objetivo_vida, ("", "general"))
@@ -561,22 +576,7 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
         )
         return
 
-    if data == "vida:back":
-        logger.info("vida:back triggered, msg_id=%s", query.message.message_id)
-        try:
-            await query.message.delete()
-            logger.info("vida:back: message deleted")
-        except Exception as del_e:
-            logger.warning("vida:back: delete failed: %s", del_e)
-        logger.info("vida:back: sending new message")
-        await context.bot.send_message(
-            chat_id      = query.message.chat_id,
-            text         = "<b>Paso 1/8 — ¿Cuál es tu objetivo?</b>\n\n"
-                           "El plan se ajusta completamente a esto:",
-            reply_markup = _kb_objetivos(),
-            parse_mode   = "HTML",
-        )
-        return
+
 
     if data.startswith("niv:"):
         nivel = data.split(":")[1]
@@ -724,6 +724,15 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
         return
 
     # ── ONBOARDING NUTRICIÓN ──────────────────────────────────────────────────
+    if data == "edad:back":
+        await query.edit_message_text(
+            "⏰ ¿A qué hora quieres tu recordatorio?",
+            reply_markup=_kb_horario(),
+            parse_mode="HTML",
+        )
+        return
+
+
     if data.startswith("edad:"):
         edad = int(data.split(":")[1])
         db.upsert_perfil(uid, edad=edad)
@@ -740,13 +749,20 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
         )
         return
 
-    if data == "edad:back":
+
+    if data == "sexo:back":
+        perfil = db.get_perfil(uid)
+        edad   = perfil.get("edad", 30)
         await query.edit_message_text(
-            "⏰ ¿A qué hora quieres tu recordatorio?",
-            reply_markup=_kb_horario(),
+            f"<b>Edad: {edad} años ✅</b>\n\n<b>¿Cuál es tu sexo biológico?</b>",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("👨 Hombre", callback_data="sexo:hombre")],
+                [InlineKeyboardButton("👩 Mujer",  callback_data="sexo:mujer")],
+            ]),
             parse_mode="HTML",
         )
         return
+
 
     if data.startswith("sexo:"):
         sexo = data.split(":")[1]
@@ -770,11 +786,10 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
         )
         return
 
-    if data == "sexo:back":
-        perfil = db.get_perfil(uid)
-        edad   = perfil.get("edad", 30)
+
+    if data == "peso_est:back":
         await query.edit_message_text(
-            f"<b>Edad: {edad} años ✅</b>\n\n<b>¿Cuál es tu sexo biológico?</b>",
+            "<b>¿Cuál es tu sexo biológico?</b>",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("👨 Hombre", callback_data="sexo:hombre")],
                 [InlineKeyboardButton("👩 Mujer",  callback_data="sexo:mujer")],
@@ -782,6 +797,7 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
             parse_mode="HTML",
         )
         return
+
 
     if data.startswith("peso_est:"):
         peso_est = float(data.split(":")[1])
@@ -819,16 +835,21 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
         )
         return
 
-    if data == "peso_est:back":
+
+    if data == "act:back":
+        perfil   = db.get_perfil(uid)
+        peso_est = perfil.get("peso_kg_estimado", 90)
         await query.edit_message_text(
-            "<b>¿Cuál es tu sexo biológico?</b>",
+            f"<b>Peso: ~{peso_est}kg ✅</b>\n\n<b>¿Qué tan activo eres fuera del gym?</b>",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("👨 Hombre", callback_data="sexo:hombre")],
-                [InlineKeyboardButton("👩 Mujer",  callback_data="sexo:mujer")],
+                [InlineKeyboardButton("🪑 Sedentario",  callback_data="act:sedentario")],
+                [InlineKeyboardButton("🚶 Moderado",    callback_data="act:moderado")],
+                [InlineKeyboardButton("🏃 Activo",      callback_data="act:activo")],
             ]),
             parse_mode="HTML",
         )
         return
+
 
     if data.startswith("act:"):
         actividad = data.split(":")[1]
@@ -850,19 +871,15 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
         )
         return
 
-    if data == "act:back":
-        perfil   = db.get_perfil(uid)
-        peso_est = perfil.get("peso_kg_estimado", 90)
+
+    if data == "nut:back":
         await query.edit_message_text(
-            f"<b>Peso: ~{peso_est}kg ✅</b>\n\n<b>¿Qué tan activo eres fuera del gym?</b>",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🪑 Sedentario",  callback_data="act:sedentario")],
-                [InlineKeyboardButton("🚶 Moderado",    callback_data="act:moderado")],
-                [InlineKeyboardButton("🏃 Activo",      callback_data="act:activo")],
-            ]),
+            "¿Cómo describes tu dieta?",
+            reply_markup=_kb_dieta(),
             parse_mode="HTML",
         )
         return
+
 
     if data.startswith("nut:"):
         tipo = data.split(":")[1]
@@ -887,13 +904,6 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
         )
         return
 
-    if data == "nut:back":
-        await query.edit_message_text(
-            "¿Cómo describes tu dieta?",
-            reply_markup=_kb_dieta(),
-            parse_mode="HTML",
-        )
-        return
 
     if data.startswith("alerg:"):
         alerg = data.split(":")[1]
