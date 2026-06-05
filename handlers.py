@@ -1344,7 +1344,7 @@ def _kb_horario(back: str | None = None) -> InlineKeyboardMarkup:
 def register(app: Application) -> None:
     allowed = db.get_allowed_users()
     logger.info("Usuarios permitidos: %s", allowed)
-    logger.info("handlers.py version: 2026-06-05-v3 — vida:back uses delete+send")
+    logger.info("handlers.py version: 2026-06-05-v4")
 
     app.add_handler(CommandHandler("start",       cmd_start))
     app.add_handler(CommandHandler("login",       cmd_login))
