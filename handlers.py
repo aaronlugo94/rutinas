@@ -155,6 +155,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     nombre = update.effective_user.first_name or ""
 
     if not db.has_plan(uid):
+        # Clear any partial state from previous attempts
+        db.clear_sesion_activa(uid)
         await _onboarding_bienvenida(update, nombre)
         return
 
@@ -429,7 +431,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     except Exception as e:
         err_str = str(e)
         if "Message is not modified" in err_str:
-            logger.warning("Message not modified [%s] — ignorado", data)
+            logger.warning("Message not modified [%s] — full error: %s", data, err_str)
             return
         logger.error("callback_router error [%s]: %s", data, e, exc_info=True)
         try:
@@ -560,10 +562,13 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
         return
 
     if data == "vida:back":
+        logger.info("vida:back triggered, msg_id=%s", query.message.message_id)
         try:
             await query.message.delete()
-        except Exception:
-            pass
+            logger.info("vida:back: message deleted")
+        except Exception as del_e:
+            logger.warning("vida:back: delete failed: %s", del_e)
+        logger.info("vida:back: sending new message")
         await context.bot.send_message(
             chat_id      = query.message.chat_id,
             text         = "<b>Paso 1/8 — ¿Cuál es tu objetivo?</b>\n\n"
