@@ -560,7 +560,6 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
         return
 
     if data == "vida:back":
-        # Eliminar mensaje actual y mandar nuevo (evita problema de mensaje viejo)
         try:
             await query.message.delete()
         except Exception:
