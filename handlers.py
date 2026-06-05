@@ -528,17 +528,28 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
         tipo = data.split(":")[1]
         if tipo in ("gym", "todo"):
             db.clear_plan(uid)
-            await query.edit_message_text(
-                "💪 <b>¿Cuál es tu objetivo?</b>\n\n"
-                "Sé honesto — el plan se ajusta completamente a esto:",
-                reply_markup=_kb_objetivos(),
-                parse_mode="HTML",
+            db.clear_sesion_activa(uid)
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
+            await context.bot.send_message(
+                chat_id      = query.message.chat_id,
+                text         = "<b>Paso 1/8 — ¿Cuál es tu objetivo?</b>\n\n"
+                               "El plan se ajusta completamente a esto:",
+                reply_markup = _kb_objetivos(),
+                parse_mode   = "HTML",
             )
         elif tipo == "dieta":
-            await query.edit_message_text(
-                "🥗 <b>¿Cómo describes tu alimentación?</b>",
-                reply_markup=_kb_dieta(),
-                parse_mode="HTML",
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
+            await context.bot.send_message(
+                chat_id      = query.message.chat_id,
+                text         = "🥗 <b>¿Cómo describes tu alimentación?</b>",
+                reply_markup = _kb_dieta(),
+                parse_mode   = "HTML",
             )
         return
 
@@ -909,26 +920,6 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
         alerg = data.split(":")[1]
         db.upsert_perfil(uid, alergias=alerg)
 
-        # ── Pregunta cocina favorita ──────────────────────────────────────────
-        await query.edit_message_text(
-            f"<b>Restricción: {alerg.replace('_',' ')} ✅</b>\n\n"
-            "<b>¿Qué tipo de cocina disfrutas más?</b>\n\n"
-            "<i>Gemini usará esto para hacer el plan más apetecible y realista.</i>",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🌮 Mexicana / Latina",      callback_data="cocina:mexicana")],
-                [InlineKeyboardButton("🍝 Italiana / Mediterránea", callback_data="cocina:mediterranea")],
-                [InlineKeyboardButton("🍱 Asiática (japonesa/thai/china)", callback_data="cocina:asiatica")],
-                [InlineKeyboardButton("🥩 Americana / BBQ / Parrilla", callback_data="cocina:americana")],
-                [InlineKeyboardButton("🌍 Variada — me gusta de todo", callback_data="cocina:variada")],
-            ]),
-            parse_mode="HTML",
-        )
-        return
-
-    if data.startswith("cocina:"):
-        cocina = data.split(":")[1]
-        db.upsert_perfil(uid, cocina_preferida=cocina)
-
         # ── Generar plan de gym ───────────────────────────────────────────────
         await query.edit_message_text(
             "⚙️ <b>Creando tu plan...</b>\n\n<i>Analizando tu perfil. Tarda unos segundos.</i>",
@@ -950,6 +941,9 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
             primera_sem = plan[0]["semana"]
             primer_dia  = plan[0]["dias"][0]["dia"]
             db.upsert_estado(uid, primera_sem, primer_dia)
+            logger.info("Plan generado: %d ejercicios, semana=%s, dia=%s", n_ej, primera_sem, primer_dia)
+            if n_ej == 0:
+                raise Exception("insert_plan returned 0 — check planner output format")
 
             # Recomendación calórica basada en objetivo
             obj      = perfil.get("objetivo", "general")
@@ -993,6 +987,23 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
         return
 
     # ── DIETA: REGENERAR ─────────────────────────────────────────────────────
+    if data.startswith("cocina:"):
+        # Cocina preference saved for diet plan (doesn't block gym plan)
+        cocina = data.split(":")[1]
+        db.upsert_perfil(uid, cocina_preferida=cocina)
+        try:
+            await query.edit_message_text(
+                f"🌮 Cocina favorita: <b>{cocina}</b> ✅\n\nGemini la usará en tu plan de dieta.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🏠 Menú", callback_data="menu:main")
+                ]]),
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+        return
+
+
     if data == "dieta:regenerar":
         await query.edit_message_text(
             "🥗 <b>Regenerar plan de dieta</b>\n\n"
