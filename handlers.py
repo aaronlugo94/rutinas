@@ -77,6 +77,23 @@ def _grupo_del_dia(user_id: int, semana: int, dia: str) -> str:
     return rows[0].get("grupo", "") if rows else ""
 
 
+async def _safe_edit(query, context, text, reply_markup=None, parse_mode="HTML"):
+    """Edita mensaje o manda uno nuevo si falla (ej. mismo contenido)."""
+    try:
+        await query.edit_message_text(
+            text, reply_markup=reply_markup, parse_mode=parse_mode,
+            disable_web_page_preview=True,
+        )
+    except Exception as e:
+        if "Message is not modified" not in str(e):
+            # Error real — mandar mensaje nuevo
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text=text, reply_markup=reply_markup,
+                parse_mode=parse_mode,
+            )
+
+
 async def _menu_principal_texto(uid: int, nombre: str = "") -> str:
     """Texto del menú principal — estado rápido de los 3 pilares."""
     racha      = gam.get_racha(uid)
@@ -552,23 +569,44 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
         return
 
     if data == "vida:back":
-        await query.edit_message_text(
-            "💪 <b>¿Cuál es tu objetivo?</b>",
-            reply_markup=_kb_objetivos(),
-            parse_mode="HTML",
-        )
+        try:
+            await query.edit_message_text(
+                "💪 <b>¿Cuál es tu objetivo principal?</b>\n\n"
+                "Sé honesto — el plan se ajusta completamente a esto:",
+                reply_markup=_kb_objetivos(),
+                parse_mode="HTML",
+            )
+        except Exception:
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text="💪 <b>¿Cuál es tu objetivo?</b>",
+                reply_markup=_kb_objetivos(),
+                parse_mode="HTML",
+            )
         return
 
     if data.startswith("niv:"):
         nivel = data.split(":")[1]
         if nivel == "back":
             # Volver a selección de objetivo
-            await query.edit_message_text(
-                "<b>💪 ¿Cuál es tu objetivo principal?</b>\n\n"
-                "Sé honesto — el plan se ajusta completamente a esto:",
-                reply_markup=_kb_objetivos(),
-                parse_mode="HTML",
-            )
+            perfil = db.get_perfil(uid)
+            obj_actual = perfil.get("objetivo_vida", "")
+            hint = f"\n<i>Seleccionado: {OBJETIVOS.get(obj_actual, ('',))[0]}</i>" if obj_actual else ""
+            try:
+                await query.edit_message_text(
+                    f"<b>💪 ¿Cuál es tu objetivo principal?</b>{hint}\n\n"
+                    "Sé honesto — el plan se ajusta completamente a esto:",
+                    reply_markup=_kb_objetivos(),
+                    parse_mode="HTML",
+                )
+            except Exception:
+                # Si no se puede editar, mandar mensaje nuevo
+                await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text="<b>💪 ¿Cuál es tu objetivo principal?</b>\n\nSé honesto:",
+                    reply_markup=_kb_objetivos(),
+                    parse_mode="HTML",
+                )
             return
         db.upsert_perfil(uid, nivel=nivel)
         await query.edit_message_text(
