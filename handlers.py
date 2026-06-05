@@ -560,9 +560,15 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
         return
 
     if data == "vida:back":
-        await query.edit_message_text(
-            "<b>Paso 1/8 — ¿Cuál es tu objetivo?</b>\n\n"
-            "El plan se ajusta completamente a esto:",
+        # Eliminar mensaje actual y mandar nuevo (evita problema de mensaje viejo)
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        await context.bot.send_message(
+            chat_id      = query.message.chat_id,
+            text         = "<b>Paso 1/8 — ¿Cuál es tu objetivo?</b>\n\n"
+                           "El plan se ajusta completamente a esto:",
             reply_markup = _kb_objetivos(),
             parse_mode   = "HTML",
         )
@@ -574,16 +580,21 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
             perfil   = db.get_perfil(uid)
             obj_vida = perfil.get("objetivo_vida", "")
             desc     = OBJETIVOS.get(obj_vida, ("tu objetivo",))[0]
-            await query.edit_message_text(
-                f"<b>Paso 2/8</b> — Objetivo: {desc} ✅\n\n"
-                "<b>¿Cuánto tiempo llevas entrenando con pesas?</b>",
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
+            await context.bot.send_message(
+                chat_id      = query.message.chat_id,
+                text         = f"<b>Paso 2/8</b> — Objetivo: {desc} ✅\n\n"
+                               "<b>¿Cuánto tiempo llevas entrenando con pesas?</b>",
                 reply_markup = InlineKeyboardMarkup([
                     [InlineKeyboardButton("🌱 Menos de 1 año — soy nuevo",      callback_data="niv:principiante")],
                     [InlineKeyboardButton("💪 1 a 3 años entrenando",           callback_data="niv:intermedio")],
                     [InlineKeyboardButton("🔥 Más de 3 años — nivel avanzado",  callback_data="niv:avanzado")],
                     [InlineKeyboardButton("← Atrás",                             callback_data="vida:back")],
                 ]),
-                parse_mode = "HTML",
+                parse_mode   = "HTML",
             )
             return
         db.upsert_perfil(uid, nivel=nivel)
@@ -648,11 +659,22 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
     if data.startswith("dias:"):
         dias_s = data.split(":")[1]
         if dias_s == "back":
-            await query.edit_message_text("<b>Paso 4/8 — ¿Dónde entrenas?</b>", reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🏋️ Gimnasio",        callback_data="amb:gym")],
-                [InlineKeyboardButton("🏠 Casa",             callback_data="amb:home")],
-                [InlineKeyboardButton("🦺 Banda elástica",   callback_data="amb:band")],
-            ]), parse_mode="HTML")
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
+            await context.bot.send_message(
+                chat_id      = query.message.chat_id,
+                text         = "<b>Paso 4/8 — ¿Dónde entrenas?</b>",
+                reply_markup = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🏋️ Gimnasio — máquinas y barras", callback_data="amb:gym")],
+                    [InlineKeyboardButton("🏠 Casa — peso corporal",          callback_data="amb:home")],
+                    [InlineKeyboardButton("🦺 Casa con banda elástica",       callback_data="amb:band")],
+                    [InlineKeyboardButton("← Atrás",                          callback_data="amb:back")],
+                ]),
+                parse_mode   = "HTML",
+            )
+            return
             return
         db.upsert_perfil(uid, dias=int(dias_s))
         await query.edit_message_text(
