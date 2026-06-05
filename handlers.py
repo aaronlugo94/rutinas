@@ -569,32 +569,30 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
         return
 
     if data == "vida:back":
-        # Siempre mandar mensaje nuevo — más confiable que edit en onboarding
-        await context.bot.send_message(
-            chat_id    = query.message.chat_id,
-            text       = "💪 <b>¿Cuál es tu objetivo principal?</b>\n\nSé honesto — el plan se ajusta completamente a esto:",
+        await query.edit_message_text(
+            "💪 <b>¿Cuál es tu objetivo principal?</b>\n\n"
+            "Sé honesto — el plan se ajusta completamente a esto:",
             reply_markup = _kb_objetivos(),
-            parse_mode = "HTML",
+            parse_mode   = "HTML",
         )
         return
 
     if data.startswith("niv:"):
         nivel = data.split(":")[1]
         if nivel == "back":
-            # Desde lim:, niv:back vuelve a mostrar el nivel
-            perfil = db.get_perfil(uid)
+            perfil   = db.get_perfil(uid)
             obj_vida = perfil.get("objetivo_vida", "")
-            desc = OBJETIVOS.get(obj_vida, ("tu objetivo",))[0]
-            await context.bot.send_message(
-                chat_id      = query.message.chat_id,
-                text         = f"<b>Objetivo: {desc} ✅</b>\n\n<b>¿Cuánto tiempo llevas entrenando con pesas?</b>",
+            desc     = OBJETIVOS.get(obj_vida, ("tu objetivo",))[0]
+            await query.edit_message_text(
+                f"<b>Objetivo: {desc} ✅</b>\n\n"
+                "<b>¿Cuánto tiempo llevas entrenando con pesas?</b>",
                 reply_markup = InlineKeyboardMarkup([
                     [InlineKeyboardButton("🌱 Soy nuevo — menos de 1 año",      callback_data="niv:principiante")],
                     [InlineKeyboardButton("💪 1 a 3 años entrenando",           callback_data="niv:intermedio")],
                     [InlineKeyboardButton("🔥 Más de 3 años — nivel avanzado",  callback_data="niv:avanzado")],
                     [InlineKeyboardButton("← Atrás",                             callback_data="vida:back")],
                 ]),
-                parse_mode   = "HTML",
+                parse_mode = "HTML",
             )
             return
         db.upsert_perfil(uid, nivel=nivel)
