@@ -131,26 +131,17 @@ async def _menu_principal_texto(uid: int, nombre: str = "") -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def _onboarding_bienvenida(update: Update, nombre: str = "") -> None:
-    """Primer mensaje — explicación clara de qué hace el bot."""
+    """Onboarding — UN SOLO mensaje, todo se edita dentro de él."""
     n = nombre.split()[0] if nombre else "ahí"
-    texto = (
-        f"Hola {n} 👋\n\n"
-        "<b>Coach</b> — tu entrenador y nutriólogo personal.\n\n"
-        "Tres cosas en un solo lugar:\n"
-        "💪 <b>Rutina de gym</b> — plan de 4 semanas que sube los pesos automáticamente\n"
-        "⚖️ <b>Composición corporal</b> — análisis diario desde tu báscula\n"
-        "🥗 <b>Nutrición</b> — plan semanal calculado con IA según tus datos reales\n\n"
-        "Primero dime tu objetivo:"
+    # Mensaje inicial = paso 1 directamente
+    # Todo el onboarding ocurre editando ESTE mensaje
+    await update.message.reply_text(
+        f"Hola {n} 👋  Bienvenido a <b>Coach</b>\n\n"
+        "<b>Paso 1/8 — ¿Cuál es tu objetivo?</b>\n\n"
+        "El plan se ajusta completamente a esto:",
+        reply_markup = _kb_objetivos(),
+        parse_mode   = "HTML",
     )
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔥 Bajar grasa / perder peso",    callback_data="vida:bajar_grasa")],
-        [InlineKeyboardButton("💪 Ganar músculo y fuerza",       callback_data="vida:ganar_musculo")],
-        [InlineKeyboardButton("⚡ Bajar grasa Y ganar músculo",  callback_data="vida:recomposicion")],
-        [InlineKeyboardButton("🍑 Glúteo y pierna",             callback_data="vida:gluteo_pierna")],
-        [InlineKeyboardButton("🏃 Estar saludable y con energía", callback_data="vida:salud")],
-        [InlineKeyboardButton("🏆 Nivel competitivo / powerlifting", callback_data="vida:powerlifting")],
-    ])
-    await update.message.reply_text(texto, reply_markup=kb, parse_mode="HTML")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -556,10 +547,10 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
         db.upsert_perfil(uid, objetivo=objetivo_gym, objetivo_vida=objetivo_vida)
         desc = OBJETIVOS.get(objetivo_vida, ("",))[0]
         await query.edit_message_text(
-            f"<b>Objetivo: {desc} ✅</b>\n\n"
+            f"<b>Paso 2/8</b> — Objetivo: {desc} ✅\n\n"
             f"<b>¿Cuánto tiempo llevas entrenando con pesas?</b>",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🌱 Soy nuevo — menos de 1 año",      callback_data="niv:principiante")],
+                [InlineKeyboardButton("🌱 Menos de 1 año — soy nuevo",      callback_data="niv:principiante")],
                 [InlineKeyboardButton("💪 1 a 3 años entrenando",           callback_data="niv:intermedio")],
                 [InlineKeyboardButton("🔥 Más de 3 años — nivel avanzado",  callback_data="niv:avanzado")],
                 [InlineKeyboardButton("← Atrás",                             callback_data="vida:back")],
@@ -570,8 +561,8 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
 
     if data == "vida:back":
         await query.edit_message_text(
-            "💪 <b>¿Cuál es tu objetivo principal?</b>\n\n"
-            "Sé honesto — el plan se ajusta completamente a esto:",
+            "<b>Paso 1/8 — ¿Cuál es tu objetivo?</b>\n\n"
+            "El plan se ajusta completamente a esto:",
             reply_markup = _kb_objetivos(),
             parse_mode   = "HTML",
         )
@@ -584,10 +575,10 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
             obj_vida = perfil.get("objetivo_vida", "")
             desc     = OBJETIVOS.get(obj_vida, ("tu objetivo",))[0]
             await query.edit_message_text(
-                f"<b>Objetivo: {desc} ✅</b>\n\n"
+                f"<b>Paso 2/8</b> — Objetivo: {desc} ✅\n\n"
                 "<b>¿Cuánto tiempo llevas entrenando con pesas?</b>",
                 reply_markup = InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🌱 Soy nuevo — menos de 1 año",      callback_data="niv:principiante")],
+                    [InlineKeyboardButton("🌱 Menos de 1 año — soy nuevo",      callback_data="niv:principiante")],
                     [InlineKeyboardButton("💪 1 a 3 años entrenando",           callback_data="niv:intermedio")],
                     [InlineKeyboardButton("🔥 Más de 3 años — nivel avanzado",  callback_data="niv:avanzado")],
                     [InlineKeyboardButton("← Atrás",                             callback_data="vida:back")],
@@ -597,8 +588,8 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
             return
         db.upsert_perfil(uid, nivel=nivel)
         await query.edit_message_text(
-            "<b>¿Tienes alguna lesión o limitación física?</b>\n\n"
-            "<i>El plan evita ejercicios que puedan empeorarla.</i>",
+            "<b>Paso 3/8 — ¿Tienes alguna lesión o limitación?</b>\n\n"
+            "<i>El plan evita los ejercicios que puedan empeorarla.</i>",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("✅ Ninguna — estoy bien",                    callback_data="lim:ninguna")],
                 [InlineKeyboardButton("🦵 Rodilla — evitar sentadilla profunda",    callback_data="lim:rodilla")],
@@ -614,7 +605,7 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
         lim = data.split(":")[1]
         db.upsert_perfil(uid, limitaciones=lim)
         await query.edit_message_text(
-            "<b>¿Dónde entrenas?</b>",
+            "<b>Paso 4/8 — ¿Dónde entrenas?</b>",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🏋️ Gimnasio — máquinas y barras",     callback_data="amb:gym")],
                 [InlineKeyboardButton("🏠 Casa — peso corporal",              callback_data="amb:home")],
@@ -641,8 +632,8 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
             return
         db.upsert_perfil(uid, ambiente_preferido=ambiente)
         await query.edit_message_text(
-            "<b>¿Cuántos días a la semana puedes entrenar?</b>\n\n"
-            "<i>4 días es el punto óptimo para la mayoría — suficiente frecuencia sin sobreentrenarte.</i>",
+            "<b>Paso 5/8 — ¿Cuántos días a la semana?</b>\n\n"
+            "<i>4 días es el punto óptimo — suficiente frecuencia sin sobreentrenarte.</i>",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("3 días", callback_data="dias:3"),
                  InlineKeyboardButton("4 días", callback_data="dias:4")],
@@ -657,7 +648,7 @@ async def _callback_handler(update, context, query, data, uid, nombre, semana, d
     if data.startswith("dias:"):
         dias_s = data.split(":")[1]
         if dias_s == "back":
-            await query.edit_message_text("<b>¿Dónde entrenas?</b>", reply_markup=InlineKeyboardMarkup([
+            await query.edit_message_text("<b>Paso 4/8 — ¿Dónde entrenas?</b>", reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🏋️ Gimnasio",        callback_data="amb:gym")],
                 [InlineKeyboardButton("🏠 Casa",             callback_data="amb:home")],
                 [InlineKeyboardButton("🦺 Banda elástica",   callback_data="amb:band")],
