@@ -437,17 +437,17 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await _callback_handler(update, context, query, data, uid, nombre, semana, dia)
     except Exception as e:
         err_str = str(e)
-        # Ignorar error inofensivo de Telegram — mismo contenido
         if "Message is not modified" in err_str:
+            logger.warning("Message not modified [%s] — ignorado", data)
             return
         logger.error("callback_router error [%s]: %s", data, e, exc_info=True)
         try:
             await context.bot.send_message(
                 chat_id=query.message.chat_id,
-                text="❌ Algo salió mal. Escribe /start para reintentar.",
+                text=f"❌ Error [{data}]: {err_str[:150]}\nEscribe /start para continuar.",
             )
-        except Exception:
-            pass
+        except Exception as e2:
+            logger.error("send_message también falló: %s", e2)
 
 
 async def _callback_handler(update, context, query, data, uid, nombre, semana, dia):
