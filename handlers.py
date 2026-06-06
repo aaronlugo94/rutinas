@@ -802,9 +802,158 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             todas = list(sel) + ([extra] if extra else [])
             alerg = ",".join(sorted(todas)) if todas else "ninguna"
             db.upsert_perfil(uid, alergias=alerg)
-            await _generar_plan_gym(uid, query, context)
+            await onboard(
+                "Cuantame sobre tu alimentacion\n\n"
+                "Cuantas comidas haces al dia?",
+                InlineKeyboardMarkup([
+                    [InlineKeyboardButton("1-2 comidas — ayuno intermitente", callback_data="comidas:ayuno")],
+                    [InlineKeyboardButton("3 comidas normales",               callback_data="comidas:3")],
+                    [InlineKeyboardButton("4-5 comidas pequenas",             callback_data="comidas:5")],
+                    [InlineKeyboardButton("Sin horario fijo",                  callback_data="comidas:flexible")],
+                ])
+            )
             return
 
+        if data.startswith("comidas:"):
+            patron = data.split(":")[1]
+            if patron == "back":
+                sel = context.user_data.get("alerg_sel", set())
+                await onboard(
+                    "Hay algo que no puedas comer?",
+                    _kb_restricciones(sel)
+                )
+                return
+            db.upsert_perfil(uid, patron_comidas=patron)
+            if patron == "ayuno":
+                await onboard(
+                    "Cual es tu ventana de comida?\n\nEl plan respeta tu protocolo.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("12pm-8pm (16:8)", callback_data="ventana:16-8")],
+                        [InlineKeyboardButton("1pm-7pm (18:6)",  callback_data="ventana:18-6")],
+                        [InlineKeyboardButton("2pm-8pm",         callback_data="ventana:18-6b")],
+                        [InlineKeyboardButton("<- Atras",         callback_data="comidas:back")],
+                    ])
+                )
+            else:
+                await onboard(
+                    "A que hora es tu primera comida del dia?",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("Antes de las 8am",    callback_data="ventana:7am")],
+                        [InlineKeyboardButton("8am - 10am",          callback_data="ventana:9am")],
+                        [InlineKeyboardButton("10am - 12pm",         callback_data="ventana:11am")],
+                        [InlineKeyboardButton("Despues del mediodia", callback_data="ventana:1pm")],
+                        [InlineKeyboardButton("<- Atras",             callback_data="comidas:back")],
+                    ])
+                )
+            return
+
+        if data.startswith("ventana:"):
+            val = data.split(":")[1]
+            db.upsert_perfil(uid, primera_comida=val)
+            await onboard(
+                "Donde comes la mayoria de tus comidas?",
+                InlineKeyboardMarkup([
+                    [InlineKeyboardButton("Cocino en casa casi siempre",   callback_data="donde:casa")],
+                    [InlineKeyboardButton("Mitad en casa, mitad fuera",    callback_data="donde:mixto")],
+                    [InlineKeyboardButton("Como fuera o pido a domicilio", callback_data="donde:fuera")],
+                    [InlineKeyboardButton("<- Atras",                       callback_data="comidas:back")],
+                ])
+            )
+            return
+
+        if data.startswith("donde:"):
+            donde = data.split(":")[1]
+            if donde == "back":
+                await onboard(
+                    "A que hora es tu primera comida?",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("Antes de las 8am",    callback_data="ventana:7am")],
+                        [InlineKeyboardButton("8am - 10am",          callback_data="ventana:9am")],
+                        [InlineKeyboardButton("10am - 12pm",         callback_data="ventana:11am")],
+                        [InlineKeyboardButton("Despues del mediodia", callback_data="ventana:1pm")],
+                        [InlineKeyboardButton("<- Atras",             callback_data="comidas:back")],
+                    ])
+                )
+                return
+            db.upsert_perfil(uid, donde_come=donde)
+            await onboard(
+                "Que tipo de cocina disfrutas mas?\n\n"
+                "El plan usara recetas de tu cocina favorita.",
+                InlineKeyboardMarkup([
+                    [InlineKeyboardButton("Mexicana / Latina",         callback_data="cocina:mexicana")],
+                    [InlineKeyboardButton("Italiana / Mediterranea",   callback_data="cocina:mediterranea")],
+                    [InlineKeyboardButton("Asiatica",                  callback_data="cocina:asiatica")],
+                    [InlineKeyboardButton("Americana / Parrilla",      callback_data="cocina:americana")],
+                    [InlineKeyboardButton("Variada — me gusta de todo",callback_data="cocina:variada")],
+                    [InlineKeyboardButton("<- Atras",                   callback_data="donde:back")],
+                ])
+            )
+            return
+
+        if data == "cocina:back":
+            await onboard(
+                "Donde comes la mayoria de tus comidas?",
+                InlineKeyboardMarkup([
+                    [InlineKeyboardButton("Cocino en casa casi siempre",   callback_data="donde:casa")],
+                    [InlineKeyboardButton("Mitad en casa, mitad fuera",    callback_data="donde:mixto")],
+                    [InlineKeyboardButton("Como fuera o pido a domicilio", callback_data="donde:fuera")],
+                ])
+            )
+            return
+
+
+        if data.startswith("cocina:"):
+            cocina = data.split(":")[1]
+            db.upsert_perfil(uid, cocina_preferida=cocina)
+            await onboard(
+                "Tomas algun suplemento actualmente?\n\n"
+                "Gemini lo considera en el plan nutricional.",
+                InlineKeyboardMarkup([
+                    [InlineKeyboardButton("Ninguno",              callback_data="suple:ninguno")],
+                    [InlineKeyboardButton("Proteina whey",        callback_data="suple:whey")],
+                    [InlineKeyboardButton("Creatina",             callback_data="suple:creatina")],
+                    [InlineKeyboardButton("Proteina + Creatina",  callback_data="suple:whey_creatina")],
+                    [InlineKeyboardButton("Multivitaminico",      callback_data="suple:multi")],
+                    [InlineKeyboardButton("Otros suplementos",    callback_data="suple:otros")],
+                    [InlineKeyboardButton("<- Atras",              callback_data="cocina:back")],
+                ])
+            )
+            return
+
+
+        if data.startswith("suple:"):
+            suple = data.split(":")[1]
+            if suple == "back":
+                await onboard(
+                    "Que tipo de cocina disfrutas mas?",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("Mexicana / Latina",         callback_data="cocina:mexicana")],
+                        [InlineKeyboardButton("Italiana / Mediterranea",   callback_data="cocina:mediterranea")],
+                        [InlineKeyboardButton("Asiatica",                  callback_data="cocina:asiatica")],
+                        [InlineKeyboardButton("Americana / Parrilla",      callback_data="cocina:americana")],
+                        [InlineKeyboardButton("Variada",                   callback_data="cocina:variada")],
+                    ])
+                )
+                return
+            db.upsert_perfil(uid, suplementos=suple)
+            await onboard(
+                "Consumes alcohol?\n\n"
+                "El alcohol tiene calorias que afectan la composicion corporal.",
+                InlineKeyboardMarkup([
+                    [InlineKeyboardButton("No consumo alcohol",             callback_data="alcohol:no")],
+                    [InlineKeyboardButton("Ocasional — 1-2 veces al mes",  callback_data="alcohol:ocasional")],
+                    [InlineKeyboardButton("Moderado — fines de semana",    callback_data="alcohol:moderado")],
+                    [InlineKeyboardButton("Frecuente — varias veces/sem",  callback_data="alcohol:frecuente")],
+                    [InlineKeyboardButton("<- Atras",                        callback_data="suple:back")],
+                ])
+            )
+            return
+
+        if data.startswith("alcohol:"):
+            nivel = data.split(":")[1]
+            db.upsert_perfil(uid, alcohol=nivel)
+            await _generar_plan_gym(uid, query, context)
+            return
 
         if data.startswith("alerg:"):
             alerg = data.split(":")[1]
