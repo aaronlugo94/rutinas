@@ -382,6 +382,65 @@ async def handler_texto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text(txt, reply_markup=kb, parse_mode="HTML")
         return
 
+    # Onboarding: esperar texto para edad o peso
+    step = context.user_data.get("onboard_step")
+
+    if step == "edad":
+        try:
+            edad = int(texto.strip())
+            if not (10 <= edad <= 100):
+                raise ValueError
+        except ValueError:
+            await update.message.reply_text("Escribe solo el número de años. Ej: 28")
+            return
+        db.upsert_perfil(uid, edad=edad)
+        # Pedir peso
+        context.user_data["onboard_step"] = "peso"
+        await update.message.reply_text(
+            f"<b>Edad: {edad} años ✅</b>\n\n"
+            "<b>¿Cuánto pesas?</b>\n\n"
+            "Escribe tu peso en <b>kg</b> o <b>lbs</b>\n"
+            "Ejemplos: <code>85</code> o <code>187 lbs</code>",
+            parse_mode = "HTML",
+            reply_markup = InlineKeyboardMarkup([[
+                InlineKeyboardButton("← Atrás", callback_data="horario:back")
+            ]])
+        )
+        return
+
+    if step == "peso":
+        txt_raw = texto.strip().lower()
+        try:
+            if "lbs" in txt_raw or "lb" in txt_raw:
+                peso = round(float(txt_raw.replace("lbs","").replace("lb","").strip()) * 0.453592, 1)
+            else:
+                peso = float(txt_raw.replace("kg","").replace(",",".").strip())
+            if not (30 <= peso <= 300):
+                raise ValueError
+        except ValueError:
+            await update.message.reply_text(
+                "No entendí el peso. Escribe algo como <code>85</code> o <code>187 lbs</code>",
+                parse_mode="HTML"
+            )
+            return
+        db.upsert_perfil(uid, peso_kg_estimado=peso)
+        perfil = db.get_perfil(uid)
+        edad   = int(perfil.get("edad") or 30)
+        sexo   = perfil.get("sexo", "hombre")
+        altura = 175 if sexo == "hombre" else 163
+        bmr    = round(10*peso + 6.25*altura - 5*edad + (5 if sexo=="hombre" else -161))
+        tdee   = round(bmr * {"sedentario":1.2,"moderado":1.375,"activo":1.55}.get(
+                    perfil.get("actividad_nivel","sedentario"), 1.2))
+        db.upsert_perfil(uid, bmr_estimado=bmr, tdee_estimado=tdee)
+        context.user_data["onboard_step"] = None
+        await update.message.reply_text(
+            f"<b>Peso: {peso} kg ✅</b>\n\nTu gasto estimado: <b>{tdee} kcal/día</b>\n\n"
+            "<b>¿Cómo describes tu alimentación?</b>",
+            parse_mode   = "HTML",
+            reply_markup = _kb_dieta(back_cb=None)
+        )
+        return
+
     # Fallback
     nombre = update.effective_user.first_name or ""
     texto_m = await _menu_texto(uid, nombre)
@@ -623,31 +682,12 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             hora_val = data.split(":")[1]
             hora     = None if hora_val == "none" else ":".join(data.split(":")[1:])
             db.upsert_perfil(uid, hora_recordatorio=hora)
+            # Pedir edad exacta — el usuario escribe el número
+            context.user_data["onboard_step"] = "edad"
             await onboard(
-                "<b>Paso 7/8 — ¿Cuántos años tienes?</b>\n\n<i>Para calcular tu metabolismo con precisión.</i>",
-                InlineKeyboardMarkup([
-                    [InlineKeyboardButton("18-24", callback_data="edad:21"),
-                     InlineKeyboardButton("25-34", callback_data="edad:30")],
-                    [InlineKeyboardButton("35-44", callback_data="edad:40"),
-                     InlineKeyboardButton("45-54", callback_data="edad:50")],
-                    [InlineKeyboardButton("55+",   callback_data="edad:60")],
-                ])
-            )
-            return
-
-        if data.startswith("edad:"):
-            edad = int(data.split(":")[1])
-            db.upsert_perfil(uid, edad=edad)
-            await onboard(
-                f"<b>Paso 7/8</b> — Edad: {edad} años ✅\n\n<b>¿Cuánto pesas aproximadamente?</b>",
-                InlineKeyboardMarkup([
-                    [InlineKeyboardButton("50-65 kg",  callback_data="peso_est:57"),
-                     InlineKeyboardButton("65-80 kg",  callback_data="peso_est:72")],
-                    [InlineKeyboardButton("80-95 kg",  callback_data="peso_est:87"),
-                     InlineKeyboardButton("95-110 kg", callback_data="peso_est:102")],
-                    [InlineKeyboardButton("110-125 kg", callback_data="peso_est:117"),
-                     InlineKeyboardButton("125+ kg",    callback_data="peso_est:135")],
-                ])
+                "<b>Paso 7/9 — ¿Cuántos años tienes?</b>\n\n"
+                "Escribe tu edad (ej: 28):",
+                InlineKeyboardMarkup([[InlineKeyboardButton("← Atrás", callback_data="horario:back")]])
             )
             return
 
@@ -663,8 +703,9 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             factor = {"sedentario":1.2,"moderado":1.375,"activo":1.55}.get(act, 1.2)
             tdee   = round(bmr * factor)
             db.upsert_perfil(uid, bmr_estimado=bmr, tdee_estimado=tdee)
+            context.user_data["onboard_step"] = None
             await onboard(
-                f"<b>Paso 8/8 — Casi listo</b>\n\nTu gasto calórico estimado: <b>{tdee} kcal/día</b>\n\n"
+                f"<b>Paso 9/9 — Casi listo</b>\n\nTu gasto estimado: <b>{tdee} kcal/día</b>\n\n"
                 "<b>¿Cómo describes tu alimentación?</b>",
                 _kb_dieta(back_cb=None)
             )
@@ -942,7 +983,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 def register(app: Application) -> None:
     allowed = db.get_allowed_users()
     logger.info("Usuarios permitidos: %s", allowed)
-    logger.info("handlers.py version: 2026-06-05-v7")
+    logger.info("handlers.py version: 2026-06-05-v8")
 
     app.add_handler(CommandHandler("start",      cmd_start))
     app.add_handler(CommandHandler("login",      cmd_login))
