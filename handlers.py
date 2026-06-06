@@ -942,7 +942,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 def register(app: Application) -> None:
     allowed = db.get_allowed_users()
     logger.info("Usuarios permitidos: %s", allowed)
-    logger.info("handlers.py version: 2026-06-05-v6")
+    logger.info("handlers.py version: 2026-06-05-v7")
 
     app.add_handler(CommandHandler("start",      cmd_start))
     app.add_handler(CommandHandler("login",      cmd_login))
