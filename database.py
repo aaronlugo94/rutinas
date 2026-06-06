@@ -176,6 +176,9 @@ def init_db():
         "CREATE TABLE IF NOT EXISTS historico_dietas (fecha TEXT PRIMARY KEY, score_comp INTEGER, estado_mimo TEXT, kcal_mult REAL, calorias INTEGER, proteina INTEGER, carbs INTEGER, grasas INTEGER, dieta_html TEXT, delta_peso REAL)",
         "CREATE TABLE IF NOT EXISTS config_nutricion (clave TEXT PRIMARY KEY, valor TEXT)",
         "INSERT OR IGNORE INTO config_nutricion (clave, valor) VALUES ('kcal_mult','1.0')",
+        "ALTER TABLE rutinas ADD COLUMN rol TEXT DEFAULT 'principal'",
+        "ALTER TABLE rutinas ADD COLUMN emg_score INTEGER DEFAULT 1",
+        "ALTER TABLE rutinas ADD COLUMN patron TEXT DEFAULT ''",
         """CREATE TABLE IF NOT EXISTS swaps (
             id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
             original_id TEXT, nuevo_id TEXT, grupo TEXT, rol TEXT,
