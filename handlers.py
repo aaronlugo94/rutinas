@@ -131,6 +131,23 @@ async def _send_onboarding(chat_id, context, text, kb):
     )
 
 
+def _kb_restricciones(sel: set) -> InlineKeyboardMarkup:
+    def btn(emoji, label, key):
+        mark = "☑️" if key in sel else "⬜"
+        return InlineKeyboardButton(f"{mark} {emoji} {label}", callback_data=f"rtoggle:{key}")
+    n = len(sel)
+    confirmar = f"✅ Confirmar ({n} seleccionadas)" if n else "✅ Ninguna — continuar"
+    return InlineKeyboardMarkup([
+        [btn("🥛","Sin lácteos","lacteos"),    btn("🌾","Sin gluten","gluten")],
+        [btn("🥜","Sin maní/frutos secos","frutos_secos"), btn("🥚","Sin huevo","huevo")],
+        [btn("🦐","Sin mariscos","mariscos"),  btn("🐖","Sin cerdo","cerdo")],
+        [btn("🌱","Vegano/vegetariano","vegano"), btn("🌽","Sin maíz","maiz")],
+        [InlineKeyboardButton("✏️ Otra restricción...", callback_data="alerg:otra")],
+        [InlineKeyboardButton(confirmar, callback_data="alerg:confirmar")],
+        [InlineKeyboardButton("← Atrás", callback_data="nut:back")],
+    ])
+
+
 async def _generar_plan_gym(uid, query, context):
     """Genera el plan de gym y muestra confirmación."""
     await query.edit_message_text(
@@ -405,6 +422,19 @@ async def handler_texto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             reply_markup = InlineKeyboardMarkup([[
                 InlineKeyboardButton("← Atrás", callback_data="horario:back")
             ]])
+        )
+        return
+
+    if step == "alerg_otra":
+        extra = texto.strip()
+        context.user_data["alerg_extra"] = extra
+        context.user_data["onboard_step"] = None
+        sel = context.user_data.get("alerg_sel", set())
+        await update.message.reply_text(
+            f"<b>Añadido: {extra} ✅</b>\n\n"
+            "<b>¿Algo más que no puedas comer?</b>\n<i>Selecciona o confirma:</i>",
+            parse_mode   = "HTML",
+            reply_markup = _kb_restricciones(sel)
         )
         return
 
@@ -725,20 +755,56 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             tipo = data.split(":")[1]
             desc = DIETAS.get(tipo, tipo)
             db.upsert_perfil(uid, tipo_dieta=tipo)
+            context.user_data["alerg_sel"] = set()
             await onboard(
-                f"<b>Dieta: {desc} ✅</b>\n\n<b>¿Hay algo que no puedas comer?</b>",
-                InlineKeyboardMarkup([
-                    [InlineKeyboardButton("✅ Ninguna",                callback_data="alerg:ninguna")],
-                    [InlineKeyboardButton("🥛 Sin lácteos",            callback_data="alerg:lacteos")],
-                    [InlineKeyboardButton("🌾 Sin gluten",             callback_data="alerg:gluten")],
-                    [InlineKeyboardButton("🥜 Sin maní/frutos secos",  callback_data="alerg:frutos_secos")],
-                    [InlineKeyboardButton("🥚 Sin huevo",              callback_data="alerg:huevo")],
-                    [InlineKeyboardButton("🦐 Sin mariscos",           callback_data="alerg:mariscos")],
-                    [InlineKeyboardButton("🐖 Sin cerdo",              callback_data="alerg:cerdo")],
-                    [InlineKeyboardButton("← Atrás",                   callback_data="nut:back")],
-                ])
+                f"<b>Dieta: {desc} ✅</b>\n\n"
+                "<b>¿Hay algo que no puedas comer?</b>\n"
+                "<i>Selecciona todo lo que aplique:</i>",
+                _kb_restricciones(set())
             )
             return
+
+        if data.startswith("rtoggle:"):
+            item = data.split(":")[1]
+            sel  = context.user_data.get("alerg_sel", set())
+            if item in sel:
+                sel.discard(item)
+            else:
+                sel.add(item)
+            context.user_data["alerg_sel"] = sel
+            await onboard(
+                "<b>¿Hay algo que no puedas comer?</b>\n"
+                "<i>Selecciona todo lo que aplique:</i>",
+                _kb_restricciones(sel)
+            )
+            return
+
+        if data == "alerg:otra":
+            context.user_data["onboard_step"] = "alerg_otra"
+            await onboard(
+                "✏️ <b>Escribe tu restricción</b>\n\nEj: sin azúcar, sin soya, diabético",
+                InlineKeyboardMarkup([[InlineKeyboardButton("← Atrás", callback_data="alerg:volver")]])
+            )
+            return
+
+        if data == "alerg:volver":
+            sel = context.user_data.get("alerg_sel", set())
+            context.user_data["onboard_step"] = None
+            await onboard(
+                "<b>¿Hay algo que no puedas comer?</b>\n<i>Selecciona todo lo que aplique:</i>",
+                _kb_restricciones(sel)
+            )
+            return
+
+        if data == "alerg:confirmar":
+            sel   = context.user_data.get("alerg_sel", set())
+            extra = context.user_data.get("alerg_extra", "")
+            todas = list(sel) + ([extra] if extra else [])
+            alerg = ",".join(sorted(todas)) if todas else "ninguna"
+            db.upsert_perfil(uid, alergias=alerg)
+            await _generar_plan_gym(uid, query, context)
+            return
+
 
         if data.startswith("alerg:"):
             alerg = data.split(":")[1]
@@ -983,7 +1049,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 def register(app: Application) -> None:
     allowed = db.get_allowed_users()
     logger.info("Usuarios permitidos: %s", allowed)
-    logger.info("handlers.py version: 2026-06-05-v8")
+    logger.info("handlers.py version: 2026-06-05-v9")
 
     app.add_handler(CommandHandler("start",      cmd_start))
     app.add_handler(CommandHandler("login",      cmd_login))
