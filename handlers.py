@@ -194,9 +194,13 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     db.clear_sesion_activa(uid)
 
     if not db.has_plan(uid):
+        n = nombre.split()[0] if nombre else "ahí"
         await update.message.reply_text(
-            f"Hola {nombre.split()[0] if nombre else ''} 👋  Bienvenido a <b>Coach</b>\n\n"
-            "<b>Paso 1/8 — ¿Cuál es tu objetivo?</b>\n\nEl plan se ajusta completamente a esto:",
+            f"Hola {n} 👋  Bienvenido a <b>Coach</b>\n\n"
+            "💪 Rutina de gym con progresión automática\n"
+            "⚖️ Análisis corporal diario desde tu báscula\n"
+            "🥗 Plan de nutrición semanal con IA\n\n"
+            "<b>Empecemos — ¿cuál es tu objetivo?</b>",
             reply_markup = _kb_objetivos(),
             parse_mode   = "HTML",
         )
@@ -204,12 +208,12 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     texto = await _menu_texto(uid, nombre)
     await update.message.reply_text(
-        texto + "\n\n¿Qué hacemos? 👇",
+        texto,
         reply_markup = ren.TECLADO_PERSISTENTE,
         parse_mode   = "HTML",
     )
     await update.message.reply_text(
-        "Menú:",
+        "¿Qué hacemos? 👇",
         reply_markup = ren.MENU_PRINCIPAL,
     )
 
@@ -420,13 +424,10 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                                           disable_web_page_preview=True, **kw)
 
         async def onboard(text, kb):
-            """Siempre delete+send para onboarding — evita message not modified."""
-            try:
-                await query.message.delete()
-            except Exception:
-                pass
-            await context.bot.send_message(
-                chat_id=chat_id, text=text, reply_markup=kb, parse_mode="HTML"
+            """Edit en el mismo mensaje — rápido e instantáneo."""
+            await query.edit_message_text(
+                text, reply_markup=kb, parse_mode="HTML",
+                disable_web_page_preview=True,
             )
 
         # ── MENÚ PRINCIPAL ────────────────────────────────────────────────────
@@ -941,7 +942,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 def register(app: Application) -> None:
     allowed = db.get_allowed_users()
     logger.info("Usuarios permitidos: %s", allowed)
-    logger.info("handlers.py version: 2026-06-05-v5-clean")
+    logger.info("handlers.py version: 2026-06-05-v6")
 
     app.add_handler(CommandHandler("start",      cmd_start))
     app.add_handler(CommandHandler("login",      cmd_login))
