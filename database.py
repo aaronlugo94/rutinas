@@ -180,6 +180,8 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
             original_id TEXT, nuevo_id TEXT, grupo TEXT, rol TEXT,
             fecha TEXT DEFAULT (date('now')))""",
+        "ALTER TABLE swaps ADD COLUMN nuevo_id TEXT",
+        "ALTER TABLE swaps ADD COLUMN original_id TEXT",
     ]
     with get_db() as conn:
         for sql in MIGRACIONES:
